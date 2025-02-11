@@ -43,6 +43,9 @@ def named_pipe_server():
     if os.name != "nt":
         pytest.skip("Named pipes benchmark only supported on Windows")
     pipe_name = r"\\.\pipe\RPyC_{}".format(uuid.uuid4().hex)
+    # Note: RPyC does not provide a dedicated NamedPipeListener.
+    # Instead, NamedPipeStream.create_server and create_client are provided,
+    # so we implement a custom listener here for benchmarking purposes.
 
     class NamedPipeListener:
         def __init__(self, pipe_name):
