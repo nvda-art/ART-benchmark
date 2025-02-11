@@ -1,6 +1,8 @@
 import pytest
 import threading
 import time
+import os
+import uuid
 import rpyc
 from rpyc.utils.server import ThreadedServer
 
@@ -35,3 +37,32 @@ def test_remote_echo(benchmark, client):
         return client.root.echo("test")
     result = benchmark(remote_echo)
     assert result == "test"
+
+@pytest.fixture(scope="module")
+def named_pipe_server():
+    if os.name != "nt":
+        pytest.skip("Named pipes benchmark only supported on Windows")
+    pipe_name = r"\\.\pipe\RPyC_{}".format(uuid.uuid4().hex)
+    server = ThreadedServer(TestService, pipe=pipe_name, protocol_config={"allow_public_attrs": True})
+    thread = threading.Thread(target=server.start)
+    thread.daemon = True
+    thread.start()
+    time.sleep(0.1)
+    server.pipe_name = pipe_name
+    yield server
+    server.close()
+    thread.join()
+
+@pytest.fixture
+def named_pipe_client(named_pipe_server):
+    if os.name != "nt":
+        pytest.skip("Named pipes benchmark only supported on Windows")
+    conn = rpyc.connect_pipe(named_pipe_server.pipe_name, service=TestService)
+    yield conn
+    conn.close()
+
+def test_named_pipe_echo(benchmark, named_pipe_client):
+    def remote_echo():
+        return named_pipe_client.root.echo("pipe test")
+    result = benchmark(remote_echo)
+    assert result == "pipe test"
