@@ -21,7 +21,29 @@ class NamedPipeServer(ThreadedServer):
             conn_stream.getpeername = lambda: (self.pipe_name, 0)
         if not hasattr(conn_stream, "getsockname"):
             conn_stream.getsockname = lambda: (self.pipe_name, 0)
+        if not hasattr(conn_stream, "_fileno"):
+            conn_stream._fileno = 0
+        if not hasattr(conn_stream, "send"):
+            conn_stream.send = conn_stream.write
         self._authenticate_and_serve_client(conn_stream)
+
+    def _serve_client(self, sock, credentials):
+        if not hasattr(sock, "getpeername"):
+            sock.getpeername = lambda: (self.pipe_name, 0)
+        if not hasattr(sock, "getsockname"):
+            sock.getsockname = lambda: (self.pipe_name, 0)
+        addrinfo = sock.getpeername()
+        self.logger.info(f"welcome {addrinfo}")
+        try:
+            config = dict(self.protocol_config,
+                          credentials=credentials,
+                          endpoints=(sock.getsockname(), addrinfo),
+                          logger=self.logger)
+            from rpyc.core.channel import Channel
+            conn = self.service._connect(Channel(sock), config)
+            self._handle_connection(conn)
+        finally:
+            self.logger.info(f"goodbye {addrinfo}")
 
 @pytest.fixture(scope="module")
 def rpyc_server():
