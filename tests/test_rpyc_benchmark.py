@@ -19,6 +19,8 @@ class NamedPipeServer(ThreadedServer):
         conn_stream = NamedPipeStream.create_server(self.pipe_name, connect=True)
         if not hasattr(conn_stream, "getpeername"):
             conn_stream.getpeername = lambda: (self.pipe_name, 0)
+        if not hasattr(conn_stream, "getsockname"):
+            conn_stream.getsockname = lambda: (self.pipe_name, 0)
         self._authenticate_and_serve_client(conn_stream)
 
 @pytest.fixture(scope="module")
