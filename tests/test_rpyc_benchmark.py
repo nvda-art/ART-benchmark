@@ -49,7 +49,9 @@ def named_pipe_server():
             self.pipe_name = pipe_name
         def accept(self):
             from rpyc.core.stream import NamedPipeStream
-            return NamedPipeStream.create_server(self.pipe_name, connect=True), None
+            stream = NamedPipeStream.create_server(self.pipe_name, connect=False)
+            stream.connect()
+            return stream, None
         def close(self):
             pass
 
