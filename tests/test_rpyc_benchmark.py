@@ -4,7 +4,7 @@ import time
 import os
 import uuid
 import rpyc
-from rpyc.utils.server import ThreadedServer
+from rpyc.utils.server import ThreadedServer, PipeServer
 
 class TestService(rpyc.Service):
     def exposed_echo(self, msg):
@@ -43,7 +43,7 @@ def named_pipe_server():
     if os.name != "nt":
         pytest.skip("Named pipes benchmark only supported on Windows")
     pipe_name = r"\\.\pipe\RPyC_{}".format(uuid.uuid4().hex)
-    server = ThreadedServer(TestService, pipe=pipe_name, protocol_config={"allow_public_attrs": True})
+    server = PipeServer(TestService, pipe_name, protocol_config={"allow_public_attrs": True})
     thread = threading.Thread(target=server.start)
     thread.daemon = True
     thread.start()
