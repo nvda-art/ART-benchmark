@@ -11,6 +11,14 @@ class TestService(rpyc.Service):
         """Return the message back."""
         return msg
 
+class NamedPipeServer(ThreadedServer):
+    def _listen(self):
+        from rpyc.core.stream import NamedPipeStream
+        self.active = True
+        # Use the proper NamedPipeStream interface to create a server-side stream.
+        conn_stream = NamedPipeStream.create_server(self.pipe_name, connect=True)
+        self._authenticate_and_serve_client(conn_stream)
+
 @pytest.fixture(scope="module")
 def rpyc_server():
     # Start RPyC server on a random free port (port=0)
@@ -43,34 +51,12 @@ def named_pipe_server():
     if os.name != "nt":
         pytest.skip("Named pipes benchmark only supported on Windows")
     pipe_name = r"\\.\pipe\RPyC_{}".format(uuid.uuid4().hex)
-    # Note: RPyC does not provide a dedicated NamedPipeListener.
-    # Instead, NamedPipeStream.create_server and create_client are provided,
-    # so we implement a custom listener here for benchmarking purposes.
-
-    class NamedPipeListener:
-        def __init__(self, pipe_name):
-            self.pipe_name = pipe_name
-        def getsockname(self):
-            return (self.pipe_name, 0)
-        def listen(self, backlog):
-            pass
-        def shutdown(self, how):
-            pass
-        def accept(self):
-            from rpyc.core.stream import NamedPipeStream
-            stream = NamedPipeStream.create_server(self.pipe_name, connect=True)
-            return stream, None
-        def close(self):
-            pass
-
-    listener = NamedPipeListener(pipe_name)
-    server = ThreadedServer(TestService, port=0, protocol_config={"allow_public_attrs": True})
-    server.listener = listener
+    server = NamedPipeServer(TestService, port=0, protocol_config={"allow_public_attrs": True})
+    server.pipe_name = pipe_name
     thread = threading.Thread(target=server.start)
     thread.daemon = True
     thread.start()
     time.sleep(0.1)
-    server.pipe_name = pipe_name
     yield server
     server.close()
     thread.join()
