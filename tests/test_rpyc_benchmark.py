@@ -49,12 +49,12 @@ def named_pipe_server():
             self.pipe_name = pipe_name
         def accept(self):
             from rpyc.core.stream import NamedPipeStream
-            return NamedPipeStream.create_server(self.pipe_name, connect=True)
+            return NamedPipeStream.create_server(self.pipe_name, connect=True), None
         def close(self):
             pass
 
     listener = NamedPipeListener(pipe_name)
-    server = ThreadedServer(TestService, listener=listener, protocol_config={"allow_public_attrs": True})
+    server = ThreadedServer(TestService, sock=listener, protocol_config={"allow_public_attrs": True})
     thread = threading.Thread(target=server.start)
     thread.daemon = True
     thread.start()
