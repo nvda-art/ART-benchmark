@@ -43,7 +43,18 @@ def named_pipe_server():
     if os.name != "nt":
         pytest.skip("Named pipes benchmark only supported on Windows")
     pipe_name = r"\\.\pipe\RPyC_{}".format(uuid.uuid4().hex)
-    server = ThreadedServer(TestService, pipe=pipe_name, protocol_config={"allow_public_attrs": True})
+
+    class NamedPipeListener:
+        def __init__(self, pipe_name):
+            self.pipe_name = pipe_name
+        def accept(self):
+            from rpyc.core.stream import NamedPipeStream
+            return NamedPipeStream.create_server(self.pipe_name, connect=True)
+        def close(self):
+            pass
+
+    listener = NamedPipeListener(pipe_name)
+    server = ThreadedServer(TestService, listener=listener, protocol_config={"allow_public_attrs": True})
     thread = threading.Thread(target=server.start)
     thread.daemon = True
     thread.start()
