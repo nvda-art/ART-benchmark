@@ -17,6 +17,8 @@ class NamedPipeServer(ThreadedServer):
         self.active = True
         # Use the proper NamedPipeStream interface to create a server-side stream.
         conn_stream = NamedPipeStream.create_server(self.pipe_name, connect=True)
+        if not hasattr(conn_stream, "getpeername"):
+            conn_stream.getpeername = lambda: (self.pipe_name, 0)
         self._authenticate_and_serve_client(conn_stream)
 
 @pytest.fixture(scope="module")
