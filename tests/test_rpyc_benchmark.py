@@ -49,6 +49,8 @@ def named_pipe_server():
             self.pipe_name = pipe_name
         def getsockname(self):
             return (self.pipe_name, 0)
+        def listen(self, backlog):
+            pass
         def shutdown(self, how):
             pass
         def accept(self):
@@ -76,7 +78,17 @@ def named_pipe_client(named_pipe_server):
         pytest.skip("Named pipes benchmark only supported on Windows")
     from rpyc.core.stream import NamedPipeStream
     from rpyc.utils.factory import connect_stream
-    stream = NamedPipeStream.create_client(named_pipe_server.pipe_name)
+    import time
+    timeout = time.time() + 5
+    stream = None
+    while time.time() < timeout:
+        try:
+            stream = NamedPipeStream.create_client(named_pipe_server.pipe_name)
+            break
+        except Exception:
+            time.sleep(0.1)
+    if stream is None:
+        pytest.fail("Failed to connect to named pipe")
     conn = connect_stream(stream, service=TestService)
     yield conn
     conn.close()
