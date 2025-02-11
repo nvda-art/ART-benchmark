@@ -56,7 +56,7 @@ def named_pipe_server():
             pass
 
     listener = NamedPipeListener(pipe_name)
-    server = ThreadedServer(TestService, sock=listener, protocol_config={"allow_public_attrs": True})
+    server = ThreadedServer(TestService, listener=listener, protocol_config={"allow_public_attrs": True})
     thread = threading.Thread(target=server.start)
     thread.daemon = True
     thread.start()
