@@ -14,7 +14,6 @@ We're building a benchmarking suite to compare the real-world performance charac
 We'll use pytest-benchmark as our core benchmarking tool because:
 - It handles the complexities of accurate timing
 - Provides statistical analysis out of the box
-- Integrates well with our existing pytest infrastructure
 - Has good support for async operations
 - Can generate comparison reports
 
