@@ -1,3 +1,7 @@
 rpyc
 pytest
 pytest-benchmark
+pytest-asyncio
+pyzmq
+grpcio
+grpcio-tools                                                           
