@@ -1,13 +1,16 @@
 import asyncio
 try:
+    import zmq
     import zmq.asyncio
 except ImportError as e:
     raise ImportError("pyzmq is required to use ZMQImplementation. Please install it via 'pip install pyzmq'.") from e
 from interface import RPCImplementation
+from zmq.utils.monitor import parse_monitor_message
 
 class ZMQImplementation(RPCImplementation):
-    def __init__(self):
+    def __init__(self, external_server=False):
         self.ctx = zmq.asyncio.Context.instance()
+        self.external_server = external_server
         self.simple_endpoint = "tcp://127.0.0.1:5555"
         self.stream_req_endpoint = "tcp://127.0.0.1:5557"
         self.stream_pull_endpoint = "tcp://127.0.0.1:5556"
@@ -16,25 +19,27 @@ class ZMQImplementation(RPCImplementation):
         self.simple_client = None
 
     async def setup(self):
-        self.simple_server_task = asyncio.create_task(self.run_simple_server())
-        self.stream_server_task = asyncio.create_task(self.run_stream_server())
+        if not self.external_server:
+            self.simple_server_task = asyncio.create_task(self.run_simple_server())
+            self.stream_server_task = asyncio.create_task(self.run_stream_server())
         self.simple_client = self.ctx.socket(zmq.REQ)
         self.simple_client.connect(self.simple_endpoint)
         await asyncio.sleep(0.5)
 
     async def teardown(self):
-        if self.simple_server_task:
-            self.simple_server_task.cancel()
-            try:
-                await self.simple_server_task
-            except asyncio.CancelledError:
-                pass
-        if self.stream_server_task:
-            self.stream_server_task.cancel()
-            try:
-                await self.stream_server_task
-            except asyncio.CancelledError:
-                pass
+        if not self.external_server:
+            if self.simple_server_task:
+                self.simple_server_task.cancel()
+                try:
+                    await self.simple_server_task
+                except asyncio.CancelledError:
+                    pass
+            if self.stream_server_task:
+                self.stream_server_task.cancel()
+                try:
+                    await self.stream_server_task
+                except asyncio.CancelledError:
+                    pass
         if self.simple_client:
             self.simple_client.close()
         self.ctx.term()
@@ -42,6 +47,7 @@ class ZMQImplementation(RPCImplementation):
     async def run_simple_server(self):
         socket = self.ctx.socket(zmq.REP)
         socket.bind(self.simple_endpoint)
+        await asyncio.sleep(0.5)
         try:
             while True:
                 try:
@@ -78,11 +84,31 @@ class ZMQImplementation(RPCImplementation):
             push_socket.close()
 
     async def simple_call(self, value) -> object:
-        # Create a new REQ socket for each call to support concurrent operations
+        import logging
+        logging.info("ZMQ simple_call: Connecting to %s", self.simple_endpoint)
         socket = self.ctx.socket(zmq.REQ)
+        socket.setsockopt(zmq.LINGER, 0)
+        # Set up socket monitoring to wait for connection.
+        monitor_endpoint = f"inproc://monitor.req.{id(socket)}"
+        socket.monitor(monitor_endpoint, zmq.EVENT_CONNECTED)
+        monitor = self.ctx.socket(zmq.PAIR)
+        monitor.connect(monitor_endpoint)
         socket.connect(self.simple_endpoint)
+        # Wait until the socket is connected.
+        while True:
+            msg = await monitor.recv_multipart()
+            event = parse_monitor_message(msg)
+            if event["event"] == zmq.EVENT_CONNECTED:
+                logging.info("ZMQ simple_call: Socket connected.")
+                break
+        await asyncio.sleep(0.2)
+        socket.disable_monitor()
+        monitor.close()
+        #logging.info("ZMQ simple_call: Sending value %s", value)
         await socket.send_json({"value": value})
+        logging.info("ZMQ simple_call: Waiting for reply...")
         response = await socket.recv_json()
+        # logging.info("ZMQ simple_call: Received response %s", response)
         socket.close()
         return response["result"]
 

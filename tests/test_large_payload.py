@@ -9,24 +9,22 @@ from implementations.rpyc_impl import RPyCImplementation
 from implementations.zmq_impl import ZMQImplementation
 from implementations.grpc_impl import GRPCImplementation
 
-@pytest.fixture(params=[RPyCImplementation, ZMQImplementation, GRPCImplementation])
-def rpc_implementation(request):
-    instance = request.param()
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(instance.setup())
-    yield (instance, loop)
-    loop.run_until_complete(instance.teardown())
-    loop.close()
 
 def test_large_payload(benchmark, rpc_implementation):
-    instance, loop = rpc_implementation
-    logging.info("Starting test_large_payload with 1MB payload")
-    payload = "x" * (1024 * 1024)  # 1 MB payload
-    async def payload_call():
-        return await instance.simple_call(payload)
-    result = benchmark(lambda: loop.run_until_complete(payload_call()))
-    logging.info("Finished test_large_payload, result payload length: %s", len(result))
-    # Expect the payload to be duplicated by simple_call (e.g. string multiplication)
-    assert len(result) == 2 * len(payload)
+    logging.info("Starting test_large_payload for multiple payload sizes")
+    sizes = [1024, 10*1024, 100*1024, 1024*1024]
+    async def run():
+        results = []
+        for size in sizes:
+            payload = "x" * size
+            logging.info("Testing payload size: %s bytes", size)
+            result = await asyncio.wait_for(
+                asyncio.shield(rpc_implementation.simple_call(payload)),
+                timeout=5
+            )
+            results.append((size, result))
+        return results
+    results = benchmark(lambda: asyncio.run(run()))
+    for size, res in results:
+         logging.info("Finished test_large_payload for payload %s bytes, result payload length: %s", size, len(res))
+         assert len(res) == 2 * size

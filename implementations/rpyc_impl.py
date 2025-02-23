@@ -16,25 +16,29 @@ class BenchmarkService(rpyc.Service):
             yield i
 
 class RPyCImplementation(RPCImplementation):
-    def __init__(self, host='localhost', port=18861):
+    def __init__(self, host='localhost', port=18861, external_server=False):
         self.host = host
         self.port = port
-        self.server = ThreadedServer(
-            BenchmarkService,
-            port=port,
-            protocol_config={"allow_public_attrs": True}
-        )
+        if not external_server:
+            self.server = ThreadedServer(
+                BenchmarkService,
+                port=port,
+                protocol_config={"allow_public_attrs": True}
+            )
+        else:
+            self.server = None
         self.server_thread = None
         self.conn = None
 
     async def setup(self):
         loop = asyncio.get_event_loop()
-        def start_server():
-            self.server.start()
-        self.server_thread = threading.Thread(target=start_server, daemon=True)
-        self.server_thread.start()
-        # Wait briefly to ensure the server starts
-        await asyncio.sleep(0.5)
+        if self.server is not None:
+            def start_server():
+                self.server.start()
+            self.server_thread = threading.Thread(target=start_server, daemon=True)
+            self.server_thread.start()
+            # Wait briefly to ensure the server starts
+            await asyncio.sleep(0.5)
         def connect():
             self.conn = rpyc.connect(self.host, self.port)
         await loop.run_in_executor(None, connect)

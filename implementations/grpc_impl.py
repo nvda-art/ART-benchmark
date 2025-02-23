@@ -4,7 +4,12 @@ try:
     import grpc.aio
 except ImportError as e:
     raise ImportError("grpc and grpc.aio are required for GRPCImplementation. Please install them via 'pip install grpcio grpcio-tools'.") from e
-from proto import rpc_pb2, rpc_pb2_grpc
+try:
+    from proto import rpc_pb2, rpc_pb2_grpc
+except ImportError as e:
+    import logging
+    logging.error("gRPC stubs not found. Please run build_protos.py to generate them.")
+    raise e
 from interface import RPCImplementation
 
 class GRPCServiceServicer(rpc_pb2_grpc.RPCServiceServicer):
@@ -30,11 +35,18 @@ class GRPCImplementation(RPCImplementation):
     async def setup(self):
         self.server = grpc.aio.server()
         rpc_pb2_grpc.add_RPCServiceServicer_to_server(GRPCServiceServicer(), self.server)
-        self.server.add_insecure_port(f"[::]:{self.port}")
+        self.server.add_insecure_port(f"127.0.0.1:{self.port}")
         await self.server.start()
+        import logging
+        logging.info(f"gRPC server started on port {self.port}")
         await asyncio.sleep(0.5)
-        self.channel = grpc.aio.insecure_channel(f"localhost:{self.port}")
+        self.channel = grpc.aio.insecure_channel(f"127.0.0.1:{self.port}")
         self.stub = rpc_pb2_grpc.RPCServiceStub(self.channel)
+        import asyncio
+        import logging
+        logging.info("Attempting to connect to gRPC server at 127.0.0.1:%d", self.port)
+        await asyncio.wait_for(self.channel.channel_ready(), timeout=5)
+        logging.info("gRPC channel is ready.")
 
     async def teardown(self):
         if self.channel:
@@ -51,7 +63,7 @@ class GRPCImplementation(RPCImplementation):
             request = rpc_pb2.SimpleRequest(int_value=value)
         else:
             request = rpc_pb2.SimpleRequest(str_value=value)
-        response = await self.stub.SimpleCall(request)
+        response = await self.stub.SimpleCall(request, timeout=5)
         if response.WhichOneof("payload") == "int_value":
             return response.int_value
         else:
