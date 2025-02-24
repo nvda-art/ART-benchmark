@@ -108,7 +108,7 @@ def get_dynamic_port():
     sock.close()
     return port
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def event_loop():
     import asyncio
     loop = asyncio.get_event_loop_policy().new_event_loop()
