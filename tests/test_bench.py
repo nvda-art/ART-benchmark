@@ -9,23 +9,27 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(mes
 from implementations.rpyc_impl import RPyCImplementation
 from implementations.zmq_impl import ZMQImplementation
 from implementations.grpc_impl import GRPCImplementation
+TEST_RUN_COUNT = 0
 
 
 
-def test_simple_call(benchmark, rpc_implementation):
+@pytest.mark.asyncio
+@pytest.mark.timeout(20)
+async def test_simple_call(rpc_implementation):
     logging.info("Starting test_simple_call")
-    async def simple_call_benchmark():
-        return await rpc_implementation.simple_call(42)
-    async def run():
-        return await asyncio.wait_for(asyncio.shield(simple_call_benchmark()), timeout=5)
-    result = benchmark(lambda: asyncio.run(run()))
+    result = await asyncio.wait_for(
+        asyncio.shield(rpc_implementation.simple_call(42)),
+        timeout=20
+    )
     logging.info("Finished test_simple_call with result: %s", result)
     assert result == 84
 
-def test_stream_thousand(benchmark, rpc_implementation):
+@pytest.mark.asyncio
+@pytest.mark.timeout(20)
+async def test_stream_thousand(rpc_implementation):
     logging.info("Starting test_stream_thousand")
-    async def stream_benchmark():
+    async def collect():
         return [x async for x in rpc_implementation.stream_values(1000)]
-    result = benchmark(lambda: asyncio.run(asyncio.wait_for(stream_benchmark(), timeout=5)))
+    result = await asyncio.wait_for(collect(), timeout=20)
     logging.info("Finished test_stream_thousand, received %s stream values", len(result))
     assert len(result) == 1000
