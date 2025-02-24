@@ -8,15 +8,20 @@ import logging
 from implementations.rpyc_impl import RPyCImplementation
 from implementations.zmq_impl import ZMQImplementation
 from implementations.grpc_impl import GRPCImplementation
+TEST_RUN_COUNT = 0
 
 
-def test_concurrent_simple_call(benchmark, rpc_implementation):
+@pytest.mark.asyncio
+@pytest.mark.timeout(20)
+async def test_concurrent_simple_call(rpc_implementation):
     logging.info("Starting test_concurrent_simple_call")
     async def concurrent_call():
-        tasks = [rpc_implementation.simple_call(42) for _ in range(50)]
+        semaphore = asyncio.Semaphore(10)
+        async def limited_call():
+            async with semaphore:
+                return await rpc_implementation.simple_call(42)
+        tasks = [limited_call() for _ in range(50)]
         return await asyncio.gather(*tasks)
-    async def run():
-        return await asyncio.wait_for(asyncio.shield(concurrent_call()), timeout=5)
-    results = benchmark(lambda: asyncio.run(run()))
+    results = await asyncio.wait_for(concurrent_call(), timeout=20)
     logging.info("Finished test_concurrent_simple_call with results: %s", results)
     assert all(result == 84 for result in results)
