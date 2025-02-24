@@ -7,6 +7,8 @@ import time
 
 import pytest
 
+# Removed custom event_loop fixture.
+
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s: %(message)s', force=True)
 
@@ -20,7 +22,7 @@ def pytest_addoption(parser):
 
 def launch_and_wait(cmd, protocol):
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, text=True)
+                            stderr=subprocess.STDOUT, text=True)
     start_time = time.time()
     ready = False
     while time.time() - start_time < 10:
@@ -35,15 +37,12 @@ def launch_and_wait(cmd, protocol):
     return proc
 
 
-@pytest.fixture(scope="module")
-def rpc_implementation(request):
+import pytest_asyncio
+
+@pytest_asyncio.fixture(scope="session")
+async def rpc_implementation(request, event_loop):
     rpc_type = request.config.getoption("--rpc")
     isolated = request.config.getoption("--rpc-isolated")
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
 
     if isolated:
         # Dynamic port assignment
@@ -56,7 +55,7 @@ def rpc_implementation(request):
             def connect():
                 import rpyc
                 impl.conn = rpyc.connect(impl.host, impl.port)
-            loop.run_until_complete(loop.run_in_executor(None, connect))
+            await asyncio.get_running_loop().run_in_executor(None, connect)
             yield impl
             proc.terminate()
             try:
@@ -67,8 +66,8 @@ def rpc_implementation(request):
             cmd = [sys.executable, "-u", "launch_grpc.py", "--port", str(port)]
             proc = launch_and_wait(cmd, "gRPC")
             from implementations.grpc_impl import GRPCImplementation
-            impl = GRPCImplementation(port=port)
-            asyncio.run(asyncio.sleep(0.1))
+            impl = GRPCImplementation(port=port, external_server=True)
+            await impl.setup()
             yield impl
             proc.terminate()
             try:
@@ -81,7 +80,7 @@ def rpc_implementation(request):
             from implementations.zmq_impl import ZMQImplementation
             impl = ZMQImplementation(external_server=True)
             impl.simple_endpoint = f"tcp://127.0.0.1:{port}"
-            asyncio.run(asyncio.sleep(0.1))
+            await asyncio.sleep(0.1)
             yield impl
             proc.terminate()
             try:
@@ -98,9 +97,9 @@ def rpc_implementation(request):
         elif rpc_type == "grpc":
             from implementations.grpc_impl import GRPCImplementation
             impl = GRPCImplementation()
-        asyncio.run(impl.setup())
+        await impl.setup()
         yield impl
-        asyncio.run(impl.teardown())
+        await impl.teardown()
 
 def get_dynamic_port():
     sock = socket.socket()
@@ -108,3 +107,10 @@ def get_dynamic_port():
     port = sock.getsockname()[1]
     sock.close()
     return port
+
+@pytest.fixture(scope="session")
+def event_loop():
+    import asyncio
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
