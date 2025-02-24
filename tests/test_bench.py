@@ -33,3 +33,17 @@ async def test_stream_thousand(rpc_implementation):
     result = await asyncio.wait_for(collect(), timeout=20)
     logging.info("Finished test_stream_thousand, received %s stream values", len(result))
     assert len(result) == 1000
+
+def test_benchmark_simple_call(rpc_implementation, benchmark):
+    """Benchmark the simple_call RPC using a synchronous wrapper."""
+    import asyncio
+    def run_test():
+        # Create a new event loop to avoid conflicts with the async test loop.
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(rpc_implementation.simple_call(42))
+        finally:
+            loop.close()
+        return result
+    result = benchmark(run_test)
+    assert result == 84
