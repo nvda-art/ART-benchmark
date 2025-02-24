@@ -31,7 +31,7 @@ class RPyCImplementation(RPCImplementation):
         self.conn = None
 
     async def setup(self):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if self.server is not None:
             def start_server():
                 self.server.start()
@@ -54,14 +54,14 @@ class RPyCImplementation(RPCImplementation):
             self.server_thread = None
 
     async def simple_call(self, value) -> object:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         def remote_call():
             return self.conn.root.simple_call(value)
         result = await loop.run_in_executor(None, remote_call)
         return result
 
     async def stream_values(self, count: int) -> AsyncIterator[int]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         def remote_stream():
             return list(self.conn.root.stream_values(count))
         result = await loop.run_in_executor(None, remote_stream)
