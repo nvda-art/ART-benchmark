@@ -39,7 +39,7 @@ def launch_and_wait(cmd, protocol):
 
 import pytest_asyncio
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def rpc_implementation(request, event_loop):
     rpc_type = request.config.getoption("--rpc")
     isolated = request.config.getoption("--rpc-isolated")
