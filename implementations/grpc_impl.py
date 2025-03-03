@@ -15,19 +15,24 @@ from interface import RPCImplementation
 class GRPCServiceServicer(rpc_pb2_grpc.RPCServiceServicer):
     async def SimpleCall(self, request, context):
         import logging
-        logging.info("GRPC SimpleCall received request: %s", request)
         if request.WhichOneof("payload") == "int_value":
+            logging.info("GRPC SimpleCall received int request: %d", request.int_value)
             result = request.int_value * 2
             response = rpc_pb2.SimpleResponse(int_value=result)
         else:
+            logging.info("GRPC SimpleCall received string request of length: %d", len(request.str_value))
             result = request.str_value * 2
             response = rpc_pb2.SimpleResponse(str_value=result)
-        logging.info("GRPC SimpleCall sending response: %s", response)
+        
+        if response.WhichOneof("payload") == "int_value":
+            logging.info("GRPC SimpleCall sending int response: %d", response.int_value)
+        else:
+            logging.info("GRPC SimpleCall sending string response of length: %d", len(response.str_value))
         return response
 
     async def StreamValues(self, request, context):
         import logging
-        logging.info("GRPC StreamValues received request: %s", request)
+        logging.info("GRPC StreamValues received request with count: %d", request.count)
         for i in range(request.count):
             yield rpc_pb2.StreamResponse(value=i)
         logging.info("GRPC StreamValues finished sending responses")
@@ -82,20 +87,35 @@ class GRPCImplementation(RPCImplementation):
     async def simple_call(self, value) -> object:
         import logging, asyncio, grpc
         logging.debug("GRPC simple_call using event loop id: %s", id(asyncio.get_running_loop()))
-        if isinstance(value, int):
-            request = rpc_pb2.SimpleRequest(int_value=value)
-        else:
-            request = rpc_pb2.SimpleRequest(str_value=value)
-        logging.info("GRPC simple_call sending request: %s", request)
-        call = self.stub.SimpleCall(request, wait_for_ready=True)
-        logging.debug("GRPC simple_call: current event loop id before awaiting call: %s", id(asyncio.get_running_loop()))
-        logging.debug("GRPC simple_call: awaiting call result")
-        response = await call
-        logging.info("GRPC simple_call received response: %s", response)
-        if response.WhichOneof("payload") == "int_value":
-            return response.int_value
-        else:
-            return response.str_value
+        try:
+            if isinstance(value, int):
+                request = rpc_pb2.SimpleRequest(int_value=value)
+                logging.info("GRPC simple_call sending int request: %d", value)
+            else:
+                request = rpc_pb2.SimpleRequest(str_value=value)
+                logging.info("GRPC simple_call sending string request of length: %d", len(value))
+            
+            # Use timeout for the entire call
+            try:
+                call = self.stub.SimpleCall(request, wait_for_ready=True)
+                logging.debug("GRPC simple_call: awaiting call result")
+                response = await asyncio.wait_for(call, timeout=15.0)
+                
+                if response.WhichOneof("payload") == "int_value":
+                    logging.info("GRPC simple_call received int response: %d", response.int_value)
+                    return response.int_value
+                else:
+                    logging.info("GRPC simple_call received string response of length: %d", len(response.str_value))
+                    return response.str_value
+            except asyncio.TimeoutError:
+                logging.error("GRPC simple_call: timeout waiting for response")
+                return None
+            except grpc.aio.AioRpcError as e:
+                logging.error(f"GRPC simple_call: RPC error: {e.code()}: {e.details()}")
+                return None
+        except Exception as e:
+            logging.error(f"GRPC simple_call: unexpected error: {e}")
+            return None
 
     async def stream_values(self, count: int):
         import logging

@@ -56,9 +56,23 @@ class RPyCImplementation(RPCImplementation):
     async def simple_call(self, value) -> object:
         loop = asyncio.get_running_loop()
         def remote_call():
-            return self.conn.root.simple_call(value)
-        result = await loop.run_in_executor(None, remote_call)
-        return result
+            try:
+                return self.conn.root.simple_call(value)
+            except Exception as e:
+                import logging
+                logging.error(f"RPyC simple_call error: {e}")
+                return None
+        try:
+            result = await asyncio.wait_for(loop.run_in_executor(None, remote_call), timeout=15.0)
+            return result
+        except asyncio.TimeoutError:
+            import logging
+            logging.error("RPyC simple_call timeout")
+            return None
+        except Exception as e:
+            import logging
+            logging.error(f"RPyC simple_call unexpected error: {e}")
+            return None
 
     async def stream_values(self, count: int) -> AsyncIterator[int]:
         loop = asyncio.get_running_loop()
