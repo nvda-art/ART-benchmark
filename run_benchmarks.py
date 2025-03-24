@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 import argparse
-import subprocess
 import json
 import os
+import subprocess
 import sys
 import time
-import signal
 from datetime import datetime
+
 
 def main():
     # Configure logging
@@ -56,7 +56,7 @@ def main():
             continue
             
         result_file = os.path.join(results_dir, f"{impl}_results.json")
-        cmd = ["pytest", "-v", "--benchmark-enable", "--benchmark-json", result_file]
+        cmd = ["pytest", "-v", "-x", "--benchmark-enable", "--benchmark-json", result_file]
         
         if args.isolated:
             cmd.append("--rpc-isolated")
@@ -80,34 +80,77 @@ def main():
             # Set a timeout per implementation
             timeout = args.timeout  # seconds
             
-            # Run the process with a timeout
+            # Run the process with a timeout using Popen for real-time output
             try:
-                # Use check=True to raise an exception if the process fails
-                process = subprocess.run(
-                    cmd, 
-                    stdout=subprocess.PIPE, 
+                start_time = time.time()
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    text=True, 
-                    timeout=timeout,
-                    check=False  # Don't raise on non-zero exit
+                    text=True,
+                    bufsize=1  # Line buffered
                 )
                 
-                # Print the output
-                print(process.stdout)
+                # Read and print output in real-time
+                while True:
+                    # Check if we've exceeded the timeout
+                    if time.time() - start_time > timeout:
+                        process.kill()
+                        print(f"\nTimeout reached for {impl} after {timeout} seconds.")
+                        print(f"Benchmark for {impl} was terminated due to timeout.")
+                        sys.exit(1)  # Fail early on timeout
+                        
+                    # Read a line with a small timeout to allow checking the overall timeout
+                    try:
+                        line = process.stdout.readline()
+                        if not line and process.poll() is not None:
+                            break
+                        if line:
+                            print(line.rstrip())
+                    except Exception as e:
+                        print(f"Error reading output: {e}")
+                        sys.exit(1)  # Fail early on error
+                        
+                    # Small sleep to prevent CPU spinning
+                    time.sleep(0.01)
                 
-                if process.returncode != 0:
-                    print(f"Warning: Benchmark for {impl} exited with code {process.returncode}")
+                # Get the return code
+                return_code = process.poll()
+                if return_code is None:
+                    # Process is still running, kill it
+                    process.kill()
+                    process.wait()
+                    print(f"Process for {impl} was killed after timeout")
+                    sys.exit(1)  # Fail early if process was killed
+                elif return_code != 0:
+                    print(f"Error: Benchmark for {impl} exited with code {return_code}")
+                    print("Stopping all benchmarks due to failure.")
+                    sys.exit(1)  # Fail early on non-zero return code
+                
+                # Read any remaining output
+                remaining_output, _ = process.communicate()
+                if remaining_output:
+                    print(remaining_output)
                     
-            except subprocess.TimeoutExpired as e:
-                print(f"\nTimeout reached for {impl} after {timeout} seconds.")
-                print(f"Partial output: {e.stdout}")
-                print(f"Benchmark for {impl} was terminated due to timeout.")
+            except Exception as e:
+                print(f"\nError during benchmark execution for {impl}: {e}")
+                print("Stopping all benchmarks due to failure.")
+                if 'process' in locals() and process.poll() is None:
+                    process.kill()
+                sys.exit(1)  # Fail early on exception
                 
         except Exception as e:
             print(f"Error running benchmark for {impl}: {e}")
+            print("Stopping all benchmarks due to failure.")
             # Make sure we clean up any running processes
-            if 'process' in locals() and process.poll() is None:
-                process.kill()
+            if 'process' in locals():
+                try:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=5)  # Wait for process to terminate
+                except Exception as e:
+                    print(f"Error killing process: {e}")
+            sys.exit(1)  # Fail early on exception
     
     # Check for successful benchmarks
     successful_implementations = []
@@ -120,15 +163,18 @@ def main():
                     if 'benchmarks' in data and data['benchmarks']:
                         successful_implementations.append(impl)
             except:
-                print(f"Warning: Invalid results for {impl}")
+                print(f"Error: Invalid results for {impl}")
+                sys.exit(1)  # Fail early on invalid results
         else:
-            print(f"Warning: No valid results for {impl}")
+            print(f"Error: No valid results for {impl}")
+            sys.exit(1)  # Fail early on missing results
 
     print(f"All benchmarks completed. Results saved to {results_dir}")
-    print(f"Successful implementations: {', '.join(successful_implementations) if successful_implementations else 'None'}")
+    print(f"Successful implementations: {', '.join(successful_implementations)}")
     
     if not successful_implementations:
-        print("Warning: No successful benchmarks. Report generation may fail.")
+        print("Error: No successful benchmarks. Report generation will fail.")
+        sys.exit(1)  # Fail early if no successful implementations
     
     print("Generating report...")
     try:
@@ -140,12 +186,13 @@ def main():
             print(f"Report generated successfully in {results_dir}")
         else:
             print(f"Error generating report: {result.stderr}")
-            print("Check the results directory manually.")
+            sys.exit(1)  # Fail early on report generation error
     except subprocess.TimeoutExpired:
-        print("Report generation timed out. Check the results directory manually.")
+        print("Error: Report generation timed out.")
+        sys.exit(1)  # Fail early on timeout
     except Exception as e:
         print(f"Error running report generation: {e}")
-        print("Check the results directory manually.")
+        sys.exit(1)  # Fail early on exception
 
 if __name__ == "__main__":
     main()

@@ -5,10 +5,9 @@ import subprocess
 import sys
 import time
 import os
-
 import pytest
+asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# Removed custom event_loop fixture.
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s: %(message)s', force=True)
@@ -67,7 +66,7 @@ def launch_and_wait(cmd, protocol):
 import pytest_asyncio
 
 @pytest_asyncio.fixture
-async def rpc_implementation(request, event_loop):
+async def rpc_implementation(request):
     rpc_type = request.config.getoption("--rpc")
     isolated = request.config.getoption("--rpc-isolated")
     
@@ -169,15 +168,3 @@ def get_dynamic_port():
     port = sock.getsockname()[1]
     sock.close()
     return port
-
-@pytest.fixture
-def event_loop():
-    """Create a new event loop for each test."""
-    import asyncio
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    asyncio.set_event_loop(loop)
-    yield loop
-    # Close the loop to avoid warnings
-    if not loop.is_closed():
-        loop.close()
