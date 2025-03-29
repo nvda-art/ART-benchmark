@@ -33,29 +33,40 @@ def launch_and_wait(cmd, protocol):
     import msvcrt
     import os
     import time
-        
-    while time.time() - start_time < 30:  # Increased timeout to 30 seconds
-        # Check if the process has exited
-        if proc.poll() is not None:
-            logging.error(f"{protocol} server exited prematurely with code {proc.returncode}")
-            # Get any remaining output
-            remaining_output = proc.stdout.read()
-            if remaining_output:
-                logging.error(f"Server output: {remaining_output}")
-            raise Exception(f"{protocol} server failed to start")
+    import asyncio
             
-        # Read from stdout without blocking
-        line = proc.stdout.readline()
-        if line:
-            line = line.strip()
-            logging.info(f"{protocol} server output: {line}")
-            if "READY" in line:
-                logging.info(f"{protocol} server is ready.")
-                ready = True
-                break
-        else:
-            # No data available, sleep briefly
-            time.sleep(0.1)
+    async def read_output():
+        nonlocal ready
+        while time.time() - start_time < 30:  # Increased timeout to 30 seconds
+            # Check if the process has exited
+            if proc.poll() is not None:
+                logging.error(f"{protocol} server exited prematurely with code {proc.returncode}")
+                # Get any remaining output
+                remaining_output = proc.stdout.read()
+                if remaining_output:
+                    logging.error(f"Server output: {remaining_output}")
+                raise Exception(f"{protocol} server failed to start")
+                        
+            # Read from stdout without blocking
+            line = proc.stdout.readline()
+            if line:
+                line = line.strip()
+                logging.info(f"{protocol} server output: {line}")
+                if "READY" in line:
+                    logging.info(f"{protocol} server is ready.")
+                    ready = True
+                    break
+            else:
+                # No data available, yield control to event loop
+                await asyncio.sleep(0.1)
+            
+    # Run the async function in a new event loop to avoid blocking the main one
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(read_output())
+    finally:
+        loop.close()
     
     if not ready:
         proc.kill()
