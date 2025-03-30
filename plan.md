@@ -9,6 +9,7 @@ We're building a benchmarking suite to compare the real-world performance charac
 3. How do they perform under concurrent load?
 4. What are the memory and CPU costs of each?
 5. How do they handle different payload sizes?
+6. How do Windows-specific IPC mechanisms like named pipes compare to network-based RPC?
 
 ## Testing Approach
 We'll use pytest-benchmark as our core benchmarking tool because:
@@ -24,7 +25,8 @@ rpc-benchmarks/
   ├── implementations/    # One file per RPC implementation
   │   ├── rpyc_impl.py
   │   ├── zmq_impl.py
-  │   └── grpc_impl.py
+  │   ├── grpc_impl.py
+  │   └── pyro_impl.py
   ├── tests/             # Benchmark tests
   │   └── test_bench.py
   ├── conftest.py        # pytest fixtures
@@ -80,6 +82,7 @@ Each case will run in isolation and under concurrent load to reveal real-world b
 - RPyC: Use their async features for streaming
 - ZeroMQ: Use pyzmq async API with REQ/REP for simple calls, PUSH/PULL for streaming
 - gRPC: Use standard streaming features
+- Pyro4: Use Pyro4's name server for service discovery and its proxy mechanism for remote calls
 
 ## Windows-Specific Strategy
 Windows presents unique challenges:
@@ -87,6 +90,7 @@ Windows presents unique challenges:
 - Network stack has different behavior
 - File locking affects IPC
 - PowerShell is our primary automation tool
+- Named pipes provide Windows-optimized IPC
 
 We'll manage this by:
 1. Using PowerShell for test orchestration (with batch fallbacks)
