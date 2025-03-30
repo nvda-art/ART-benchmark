@@ -17,15 +17,15 @@ def main():
     logging.info("Starting benchmark run")
     parser = argparse.ArgumentParser(description="Run RPC benchmarks and collect results")
     parser.add_argument("--implementations", nargs="+", 
-                        choices=["rpyc", "zmq", "grpc", "named-pipe"],
-                        default=["rpyc", "zmq", "grpc"],
+                        choices=["rpyc", "zmq", "grpc", "named-pipe", "pyro"],
+                        default=["rpyc", "zmq", "grpc", "pyro"],
                         help="RPC implementations to benchmark")
     parser.add_argument("--isolated", action="store_true", 
                         help="Run servers in isolated processes")
     parser.add_argument("--test", type=str, help="Specific test pattern to run")
     parser.add_argument("--output-dir", type=str, default="benchmark_results",
                         help="Directory to store results")
-    parser.add_argument("--timeout", type=int, default=30,
+    parser.add_argument("--timeout", type=int, default=60,  # Increased default timeout to 60 seconds
                         help="Timeout in seconds for each implementation's benchmark")
     args = parser.parse_args()
     
@@ -54,6 +54,30 @@ def main():
         if impl == "named-pipe" and not sys.platform.startswith("win"):
             print("Skipping named-pipe benchmarks on non-Windows platform")
             continue
+        
+        # Check if Pyro name server is running when using Pyro
+        if impl == "pyro":
+            try:
+                import Pyro4
+                Pyro4.locateNS()
+                print("Pyro name server is running")
+            except Exception as e:
+                print(f"WARNING: Pyro name server is not running: {e}")
+                print("Starting Pyro name server...")
+                try:
+                    # Start name server in background
+                    ns_process = subprocess.Popen(
+                        [sys.executable, "-m", "Pyro4.naming"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    # Wait a moment for it to start
+                    time.sleep(2)
+                    print("Pyro name server started")
+                except Exception as ns_error:
+                    print(f"ERROR: Failed to start Pyro name server: {ns_error}")
+                    print("Skipping Pyro benchmarks")
+                    continue
             
         result_file = os.path.join(results_dir, f"{impl}_results.json")
         cmd = [
@@ -61,7 +85,7 @@ def main():
             "-v", "-xvs", # Keep existing verbose flags
             "--benchmark-enable",
             "--benchmark-json", result_file,
-            "--log-cli-level=DEBUG", # Enable DEBUG level logging for tests
+            "--log-cli-level=INFO",
             "--tb=short" # Shorten pytest tracebacks on failure
         ]
         

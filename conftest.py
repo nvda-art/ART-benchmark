@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import os
+import uuid
 import pytest
 
 
@@ -14,7 +15,7 @@ logging.basicConfig(level=logging.INFO,
 
 def pytest_addoption(parser):
     parser.addoption("--rpc", action="store", default="rpyc", 
-                     choices=["rpyc", "zmq", "grpc", "named-pipe"],
+                     choices=["rpyc", "zmq", "grpc", "named-pipe", "pyro"],
                      help="Choose the RPC implementation to benchmark.")
     parser.addoption("--rpc-isolated", action="store_true", default=False,
                      help="Run the RPC server in an isolated process.")
@@ -84,6 +85,7 @@ async def rpc_implementation(request):
     rpc_type = request.config.getoption("--rpc")
     isolated = request.config.getoption("--rpc-isolated")
     
+    proc = None  # Initialize proc to None
     logging.info(f"Setting up {rpc_type} implementation (isolated={isolated})")
 
     if isolated:
@@ -101,8 +103,8 @@ async def rpc_implementation(request):
             yield impl
             proc.terminate()
             try:
-                proc.wait(timeout=5)
-            except Exception:
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
                 proc.kill()
         elif rpc_type == "named-pipe":
             if os.name != "nt":
@@ -118,8 +120,24 @@ async def rpc_implementation(request):
             yield impl
             proc.terminate()
             try:
-                proc.wait(timeout=5)
-            except Exception:
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                proc.kill()
+        elif rpc_type == "pyro":
+            # Assumes Pyro Name Server is running and accessible
+            object_name = f"example.benchmark.{uuid.uuid4().hex}"
+            cmd = [sys.executable, "-u", "launch_pyro.py", "--name", object_name]
+            proc = await launch_and_wait(cmd, "Pyro")
+            from implementations.pyro_impl import PyroImplementation
+            impl = PyroImplementation(external_server=True, object_name=object_name)
+            await impl.setup()  # Connects proxy via NS
+            yield impl
+            # Terminate the process - our improved launcher will clean up the name server registration
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                logging.warning("Pyro server did not terminate gracefully, killing it")
                 proc.kill()
         elif rpc_type == "grpc":
             cmd = [sys.executable, "-u", "launch_grpc.py", "--port", str(port)]
@@ -130,8 +148,8 @@ async def rpc_implementation(request):
             yield impl
             proc.terminate()
             try:
-                proc.wait(timeout=5)
-            except Exception:
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
                 proc.kill()
         elif rpc_type == "zmq":
             cmd = [sys.executable, "-u", "launch_zmq.py", "--port", str(port)]
@@ -143,8 +161,8 @@ async def rpc_implementation(request):
             yield impl
             proc.terminate()
             try:
-                proc.wait(timeout=5)
-            except Exception:
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
                 proc.kill()
     else:
         if rpc_type == "rpyc":
@@ -161,6 +179,9 @@ async def rpc_implementation(request):
         elif rpc_type == "grpc":
             from implementations.grpc_impl import GRPCImplementation
             impl = GRPCImplementation()
+        elif rpc_type == "pyro":
+            from implementations.pyro_impl import PyroImplementation
+            impl = PyroImplementation()  # Starts internal daemon
         try:
             logging.info(f"Setting up {rpc_type} implementation in-process")
             await asyncio.wait_for(impl.setup(), timeout=15)
