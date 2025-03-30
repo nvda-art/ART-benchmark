@@ -1,35 +1,35 @@
 import asyncio
 
+import pytest
 
-TEST_RUN_COUNT = 0
 
-
-def test_benchmark_large_payload(rpc_implementation, benchmark, event_loop):
-    """Benchmark the simple_call RPC for large payloads with concurrent calls."""
+def test_benchmark_large_payload(rpc_implementation, benchmark):
+    """Benchmark RPC calls with payloads of increasing sizes"""
 
     def run_test():
-        # Use the existing event loop from the fixture instead of creating a new one
-        loop = event_loop
-
-        async def concurrent_payload():
+        async def concurrent_payload_test():
+            # Define payload sizes to test
             sizes = [1024, 10*1024, 100*1024, 1024*1024]
 
-            async def call_payload(size):
-                payload = "x" * size
-                result = await rpc_implementation.simple_call(payload)
-                return (size, result)
-            tasks = [call_payload(size) for size in sizes]
+            # Run concurrent calls with different payload sizes
+            tasks = [rpc_implementation.simple_call(
+                "x" * size) for size in sizes]
             results = await asyncio.gather(*tasks)
-            return results
-        
-        results = loop.run_until_complete(
-            asyncio.wait_for(concurrent_payload(), timeout=180))
-        return results
-        
+
+            return list(zip(sizes, results))
+
+        return asyncio.get_event_loop().run_until_complete(
+            asyncio.wait_for(concurrent_payload_test(), timeout=180)
+        )
+
     results = benchmark(run_test)
-    # Check that we have at least some valid results
-    valid_results = [(size, res) for size, res in results if res is not None]
-    assert len(valid_results) > 0, "All RPC calls failed"
-    # Check that all valid results are correct
-    for size, res in valid_results:
-        assert len(res) == 2 * size
+
+    # Check for exceptions in results
+    for size, result in results:
+        if isinstance(result, Exception):
+            pytest.fail(f"RPC call with size {size} failed with: {result}")
+
+    # Verify correct return values
+    for size, result in results:
+        assert len(result) == 2 * \
+            size, f"Expected result length {2*size}, got {len(result)}"

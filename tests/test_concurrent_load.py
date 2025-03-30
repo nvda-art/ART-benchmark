@@ -1,31 +1,41 @@
 import asyncio
+import logging
+import pytest
 
-TEST_RUN_COUNT = 0
 
+@pytest.mark.parametrize("concurrency", [1, 5, 10, 20, 50, 100])
+def test_benchmark_simple_call(rpc_implementation, benchmark, concurrency):
+    """Benchmark simple RPC calls with varying concurrency levels"""
 
-def test_benchmark_concurrent_simple_call(rpc_implementation, benchmark, event_loop):
+    total_calls = 200
 
     def run_test():
-        # Use the existing event loop from the fixture instead of creating a new one
-        loop = event_loop
-
-        async def concurrent_call():
-            semaphore = asyncio.Semaphore(10)
+        async def concurrent_test():
+            semaphore = asyncio.Semaphore(concurrency)
 
             async def limited_call():
                 async with semaphore:
                     return await rpc_implementation.simple_call(42)
-            tasks = [limited_call() for _ in range(50)]
+
+            tasks = [limited_call() for _ in range(total_calls)]
             return await asyncio.gather(*tasks)
-        
-        results = loop.run_until_complete(
-            asyncio.wait_for(concurrent_call(), timeout=120))
-        return results
-        
+
+        return asyncio.get_event_loop().run_until_complete(
+            asyncio.wait_for(concurrent_test(), timeout=60)
+        )
+
+    # Run the benchmark
     results = benchmark(run_test)
-    # Check that we have at least some valid results
-    valid_results = [r for r in results if r is not None]
-    assert len(valid_results) > 0, "All RPC calls failed"
-    # Check that all valid results are correct
-    for result in valid_results:
+
+    # Log concurrency information
+    logging.info(
+        f"Completed benchmark with concurrency={concurrency}, calls={total_calls}")
+
+    # Check for exceptions in results
+    for result in results:
+        if isinstance(result, Exception):
+            pytest.fail(f"RPC call failed with: {result}")
+
+    # Verify correct return values
+    for result in results:
         assert result == 84
