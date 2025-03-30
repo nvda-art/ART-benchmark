@@ -1,15 +1,16 @@
 # RPC Framework Benchmark Plan
 
 ## Purpose
-We're building a benchmarking suite to compare the real-world performance characteristics of different Python RPC frameworks (RPyC, ZeroMQ, and gRPC) in a Windows environment. This will help developers make informed decisions about which framework best suits their needs based on actual performance data rather than assumptions or outdated information.
+We're building a benchmarking suite to compare the real-world performance characteristics of different Python RPC frameworks (RPyC, ZeroMQ, gRPC, and Pyro4) specifically optimized for Windows environments. This will help developers make informed decisions about which framework best suits their Windows-based applications based on actual performance data rather than assumptions or outdated information.
 
 ## Key Questions We're Answering
-1. How do these frameworks compare for basic request/response latency?
-2. Which framework handles streaming data most efficiently?
-3. How do they perform under concurrent load?
-4. What are the memory and CPU costs of each?
-5. How do they handle different payload sizes?
-6. How do Windows-specific IPC mechanisms like named pipes compare to network-based RPC?
+1. How do these frameworks compare for basic request/response latency on Windows?
+2. Which framework handles streaming data most efficiently in Windows environments?
+3. How do they perform under concurrent load on Windows systems?
+4. What are the memory and CPU costs of each framework on Windows?
+5. How do they handle different payload sizes on Windows?
+6. How do Windows-native IPC mechanisms like named pipes compare to network-based RPC?
+7. Which frameworks provide the best reliability and error handling on Windows?
 
 ## Testing Approach
 We'll use pytest-benchmark as our core benchmarking tool because:
@@ -84,19 +85,18 @@ Each case will run in isolation and under concurrent load to reveal real-world b
 - gRPC: Use standard streaming features
 - Pyro4: Use Pyro4's name server for service discovery and its proxy mechanism for remote calls
 
-## Windows-Specific Strategy
-Windows presents unique challenges:
-- Process management differs from Unix
-- Network stack has different behavior
-- File locking affects IPC
-- PowerShell is our primary automation tool
-- Named pipes provide Windows-optimized IPC
+## Windows-First Strategy
+As a Windows-focused benchmarking suite, we're leveraging Windows-specific advantages:
+- Named pipes for high-performance local IPC
+- PowerShell for robust test orchestration and automation
+- Windows-optimized process management
+- Native Windows networking stack optimizations
 
-We'll manage this by:
-1. Using PowerShell for test orchestration (with batch fallbacks)
-2. Handling Windows paths and file operations explicitly
-3. Proper process cleanup in teardown
-4. Managing Windows-specific network behavior
+Our implementation approach:
+1. PowerShell as primary automation tool with batch file fallbacks
+2. Proper handling of Windows paths and file operations
+3. Comprehensive process cleanup in teardown routines
+4. Leveraging Windows-specific performance optimizations where available
 
 ## Running Strategy
 - Each implementation runs in separate process for isolation
