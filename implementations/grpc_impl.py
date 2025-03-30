@@ -1,8 +1,6 @@
 import asyncio
 import logging
-import threading
 import time
-import traceback
 
 try:
     import grpc
@@ -19,15 +17,6 @@ logging.basicConfig(level=logging.DEBUG,
 logging.info("Initializing gRPC async")
 grpc.aio.init_grpc_aio()
 logging.info("gRPC async initialized")
-
-# Helper function to log current event loop info
-def log_event_loop_info(prefix=""):
-    try:
-        current_loop = asyncio.get_running_loop()
-        thread_id = threading.get_ident()
-        logging.debug(f"{prefix}Event loop: id={id(current_loop)}, thread={thread_id}")
-    except RuntimeError:
-        logging.debug(f"{prefix}No event loop running in thread {threading.get_ident()}")
 try:
     from proto import rpc_pb2, rpc_pb2_grpc
 except ImportError as e:
@@ -38,48 +27,38 @@ from interface import RPCImplementation
 
 class GRPCServiceServicer(rpc_pb2_grpc.RPCServiceServicer):
     async def SimpleCall(self, request, context):
-        import logging
         if request.WhichOneof("payload") == "int_value":
-            logging.info("GRPC SimpleCall received int request: %d", request.int_value)
+            # logging.debug("GRPC SimpleCall received int request: %d", request.int_value)
             result = request.int_value * 2
             response = rpc_pb2.SimpleResponse(int_value=result)
         else:
-            logging.info("GRPC SimpleCall received string request of length: %d", len(request.str_value))
+            # logging.debug("GRPC SimpleCall received string request of length: %d", len(request.str_value))
             result = request.str_value * 2
             response = rpc_pb2.SimpleResponse(str_value=result)
         
-        if response.WhichOneof("payload") == "int_value":
-            logging.info("GRPC SimpleCall sending int response: %d", response.int_value)
-        else:
-            logging.info("GRPC SimpleCall sending string response of length: %d", len(response.str_value))
+        # logging.debug("GRPC SimpleCall sending response")
         return response
 
     async def StreamValues(self, request, context):
-        import logging
-        logging.info("GRPC StreamValues received request with count: %d", request.count)
+        # logging.debug("GRPC StreamValues received request with count: %d", request.count)
         for i in range(request.count):
             yield rpc_pb2.StreamResponse(value=i)
-        logging.info("GRPC StreamValues finished sending responses")
+        # logging.debug("GRPC StreamValues finished sending responses")
 
 class GRPCImplementation(RPCImplementation):
     def __init__(self, port=50051, external_server=False):
         self.port = port
         self.external_server = external_server
         logging.info(f"GRPCImplementation.__init__ called with port {port}, external_server={external_server}")
-        log_event_loop_info("__init__: ")
         self.server = None
         self.channel = None
         self.stub = None
         self._loop = None  # Store the event loop
-        self._setup_thread_id = None
 
     async def setup(self):
         # Store the current event loop
         self._loop = asyncio.get_running_loop()
-        self._setup_thread_id = threading.get_ident()
         logging.info(f"Entering GRPCImplementation.setup(), external_server={self.external_server}")
-        log_event_loop_info("setup: ")
-        logging.info(f"Setup thread ID: {self._setup_thread_id}")
         if not self.external_server:
             self.server = grpc.aio.server()
             rpc_pb2_grpc.add_RPCServiceServicer_to_server(GRPCServiceServicer(), self.server)
@@ -95,7 +74,6 @@ class GRPCImplementation(RPCImplementation):
         
         # Log before creating channel
         logging.info(f"Creating gRPC channel to 127.0.0.1:{self.port}")
-        log_event_loop_info("before channel creation: ")
         
         # Create the channel with the current event loop context
         self.channel = grpc.aio.insecure_channel(
@@ -105,7 +83,6 @@ class GRPCImplementation(RPCImplementation):
         
         # Log after creating channel
         logging.info(f"Channel created: {self.channel}")
-        log_event_loop_info("after channel creation: ")
         self.stub = rpc_pb2_grpc.RPCServiceStub(self.channel)
         
         logging.info("Attempting to connect to gRPC server at 127.0.0.1:%d", self.port)
@@ -130,9 +107,7 @@ class GRPCImplementation(RPCImplementation):
 
     async def simple_call(self, value) -> object:
         try:
-            # Log entry to method with detailed thread and event loop info
-            current_thread_id = threading.get_ident()
-            logging.info(f"Entering simple_call with value: {value}, thread ID: {current_thread_id}")
+            logging.debug(f"Entering simple_call with value type: {type(value)}")
             
             if isinstance(value, int):
                 request = rpc_pb2.SimpleRequest(int_value=value)
@@ -141,24 +116,15 @@ class GRPCImplementation(RPCImplementation):
                 request = rpc_pb2.SimpleRequest(str_value=value)
                 logging.info(f"GRPC simple_call sending string request of length: {len(value)}")
             
-            # Check if we're in the same event loop and thread
-            current_loop = asyncio.get_running_loop()
-            current_thread_id = threading.get_ident()
-            
-            # Log detailed event loop and thread information
-            logging.info(f"Current event loop ID: {id(current_loop)}, Setup loop ID: {id(self._loop)}")
-            logging.info(f"Current thread ID: {current_thread_id}, Setup thread ID: {self._setup_thread_id}")
-            
-            if current_loop is not self._loop:
-                logging.warning(f"EVENT LOOP MISMATCH! Current: {id(current_loop)}, Setup: {id(self._loop)}")
-                logging.warning(f"Thread IDs - Current: {current_thread_id}, Setup: {self._setup_thread_id}")
-                logging.warning(f"Stack trace:\n{traceback.format_stack()}")
-            
             try:
                 # Log before making the RPC call
                 logging.info("About to make gRPC SimpleCall")
-                log_event_loop_info("before RPC call: ")
                 
+                # Ensure the stub is available
+                if not self.stub:
+                    logging.error("gRPC stub is not initialized!")
+                    raise ConnectionError("gRPC stub not available")
+                    
                 # Use the stub with explicit timeout
                 start_time = time.time()
                 response = await self.stub.SimpleCall(request, wait_for_ready=True, timeout=15.0)
@@ -166,7 +132,6 @@ class GRPCImplementation(RPCImplementation):
                 
                 # Log after the RPC call
                 logging.info(f"gRPC SimpleCall completed in {elapsed:.3f} seconds")
-                log_event_loop_info("after RPC call: ")
                 
                 if response.WhichOneof("payload") == "int_value":
                     logging.info("GRPC simple_call received int response: %d", response.int_value)
@@ -185,27 +150,16 @@ class GRPCImplementation(RPCImplementation):
         request = rpc_pb2.StreamRequest(count=count)
         logging.info(f"GRPC stream_values sending request: {request}")
         
-        # Log entry to method with detailed thread and event loop info
-        current_thread_id = threading.get_ident()
-        logging.info(f"Entering stream_values with count: {count}, thread ID: {current_thread_id}")
+        logging.debug(f"Entering stream_values with count: {count}")
         
         try:
-            # Check if we're in the same event loop and thread
-            current_loop = asyncio.get_running_loop()
-            current_thread_id = threading.get_ident()
-            
-            # Log detailed event loop and thread information
-            logging.info(f"Current event loop ID: {id(current_loop)}, Setup loop ID: {id(self._loop)}")
-            logging.info(f"Current thread ID: {current_thread_id}, Setup thread ID: {self._setup_thread_id}")
-            
-            if current_loop is not self._loop:
-                logging.warning(f"EVENT LOOP MISMATCH in stream_values! Current: {id(current_loop)}, Setup: {id(self._loop)}")
-                logging.warning(f"Thread IDs - Current: {current_thread_id}, Setup: {self._setup_thread_id}")
-                logging.warning(f"Stack trace:\n{traceback.format_stack()}")
-            
             # Log before making the streaming RPC call
             logging.info("About to make gRPC StreamValues call")
-            log_event_loop_info("before streaming RPC call: ")
+
+            # Ensure the stub is available
+            if not self.stub:
+                logging.error("gRPC stub is not initialized!")
+                raise ConnectionError("gRPC stub not available")
             
             # Add timeout to the gRPC streaming call
             response_count = 0
@@ -214,14 +168,12 @@ class GRPCImplementation(RPCImplementation):
             async for response in self.stub.StreamValues(request, wait_for_ready=True, timeout=60.0):
                 response_count += 1
                 if response_count % 100 == 0:
-                    logging.info(f"GRPC stream_values received {response_count} responses so far")
-                    log_event_loop_info(f"during streaming (response {response_count}): ")
+                    logging.debug(f"GRPC stream_values received {response_count} responses so far")
                 
                 yield response.value
             
             elapsed = time.time() - start_time
             logging.info(f"gRPC StreamValues completed in {elapsed:.3f} seconds, yielded {response_count} responses")
-            log_event_loop_info("after streaming RPC call: ")
         except Exception as e:
             logging.error(f"GRPC stream_values error: {e}")
             # Re-raise to let the caller handle it

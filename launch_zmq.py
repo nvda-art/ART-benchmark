@@ -23,8 +23,8 @@ async def run_server(port):
     impl.simple_endpoint = f"tcp://127.0.0.1:{port}"
     await impl.setup()
     print("READY", flush=True)
+    sys.stdout.flush()  # Ensure the READY signal is sent immediately
     logging.info("ZMQ server is ready and waiting for connections")
-    sys.stdout.flush()
     
     try:
         # Keep the server running indefinitely

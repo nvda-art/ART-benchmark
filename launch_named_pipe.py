@@ -29,6 +29,7 @@ def run_server(pipe_name=None):
     
     print(f"Starting named pipe server on {pipe_name}")
     print("READY", flush=True)
+    sys.stdout.flush()  # Ensure the READY signal is sent immediately
     
     # Start the server (this will block)
     server.start()

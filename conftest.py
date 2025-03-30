@@ -6,7 +6,6 @@ import sys
 import time
 import os
 import pytest
-asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 logging.basicConfig(level=logging.INFO,
@@ -21,45 +20,60 @@ def pytest_addoption(parser):
                      help="Run the RPC server in an isolated process.")
 
 
-def launch_and_wait(cmd, protocol):
-    import time  # Ensure time module is available in this scope
+async def launch_and_wait(cmd, protocol, timeout=30):
     logging.info(f"Starting {protocol} server with command: {' '.join(cmd)}")
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, bufsize=1)
-    start_time = time.time()
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT # Redirect stderr to stdout
+    )
+
     ready = False
-        
-    # Windows-compatible approach for reading from stdout without blocking
-    import msvcrt
-    import os
-    import time
-        
-    while time.time() - start_time < 30:  # Increased timeout to 30 seconds
-        # Check if the process has exited
-        if proc.poll() is not None:
-            logging.error(f"{protocol} server exited prematurely with code {proc.returncode}")
-            # Get any remaining output
-            remaining_output = proc.stdout.read()
-            if remaining_output:
-                logging.error(f"Server output: {remaining_output}")
-            raise Exception(f"{protocol} server failed to start")
-            
-        # Read from stdout without blocking
-        line = proc.stdout.readline()
-        if line:
-            line = line.strip()
-            logging.info(f"{protocol} server output: {line}")
-            if "READY" in line:
-                logging.info(f"{protocol} server is ready.")
-                ready = True
-                break
-        else:
-            # No data available, sleep briefly
-            time.sleep(0.1)
-    
-    if not ready:
-        proc.kill()
-        raise Exception(f"{protocol} server did not become ready in time.")
+    output_lines = [] # Store output for debugging if needed
+    try:
+        async with asyncio.timeout(timeout):
+            while True:
+                try:
+                    line_bytes = await proc.stdout.readline()
+                    if not line_bytes: # EOF
+                        logging.error(f"{protocol} server exited prematurely. Return code: {proc.returncode}")
+                        stdout, stderr = await proc.communicate() # Get remaining output
+                        if stdout: logging.error(f"Stdout: {stdout.decode(errors='ignore')}")
+                        if stderr: logging.error(f"Stderr: {stderr.decode(errors='ignore')}")
+                        raise Exception(f"{protocol} server failed to start or exited before ready signal.")
+
+                    line = line_bytes.decode().strip()
+                    output_lines.append(line)
+                    logging.info(f"{protocol} server output: {line}")
+                    if "READY" in line:
+                        logging.info(f"{protocol} server is ready.")
+                        ready = True
+                        break
+                except EOFError: # Should be caught by `if not line_bytes` but handle defensively
+                    logging.error(f"{protocol} server stream ended unexpectedly.")
+                    raise Exception(f"{protocol} server failed to start or stream ended.")
+
+    except asyncio.TimeoutError:
+        logging.error(f"{protocol} server did not become ready within {timeout} seconds.")
+        logging.error(f"Captured output so far:\n" + "\n".join(output_lines))
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logging.warning(f"Killing unresponsive {protocol} server after timeout.")
+            proc.kill()
+        raise Exception(f"{protocol} server timed out.")
+    except Exception as e:
+        logging.error(f"Error waiting for {protocol} server: {e}")
+        # Ensure process is terminated if it's still running
+        if proc.returncode is None:
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                 proc.kill()
+        raise # Re-raise the exception
+
     return proc
 
 
@@ -77,7 +91,7 @@ async def rpc_implementation(request):
         port = get_dynamic_port()
         if rpc_type == "rpyc":
             cmd = [sys.executable, "-u", "launch_rpyc.py", "--port", str(port)]
-            proc = launch_and_wait(cmd, "RPyC")
+            proc = await launch_and_wait(cmd, "RPyC")
             from implementations.rpyc_impl import RPyCImplementation
             impl = RPyCImplementation(host="localhost", port=port, external_server=True)
             def connect():
@@ -96,7 +110,7 @@ async def rpc_implementation(request):
             import uuid
             pipe_name = r"\\.\pipe\RPyC_{}".format(uuid.uuid4().hex)
             cmd = [sys.executable, "-u", "launch_named_pipe.py", "--pipe-name", pipe_name]
-            proc = launch_and_wait(cmd, "Named Pipe")
+            proc = await launch_and_wait(cmd, "Named Pipe")
             from named_pipe_impl import NamedPipeImplementation
             impl = NamedPipeImplementation(external_server=True)
             impl.pipe_name = pipe_name
@@ -109,7 +123,7 @@ async def rpc_implementation(request):
                 proc.kill()
         elif rpc_type == "grpc":
             cmd = [sys.executable, "-u", "launch_grpc.py", "--port", str(port)]
-            proc = launch_and_wait(cmd, "gRPC")
+            proc = await launch_and_wait(cmd, "gRPC")
             from implementations.grpc_impl import GRPCImplementation
             impl = GRPCImplementation(port=port, external_server=True)
             await impl.setup()
@@ -121,7 +135,7 @@ async def rpc_implementation(request):
                 proc.kill()
         elif rpc_type == "zmq":
             cmd = [sys.executable, "-u", "launch_zmq.py", "--port", str(port)]
-            proc = launch_and_wait(cmd, "ZeroMQ")
+            proc = await launch_and_wait(cmd, "ZeroMQ")
             from implementations.zmq_impl import ZMQImplementation
             impl = ZMQImplementation(external_server=True)
             impl.simple_endpoint = f"tcp://127.0.0.1:{port}"

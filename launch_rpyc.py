@@ -4,6 +4,7 @@ import logging
 import time
 import threading
 import rpyc
+import sys
 from implementations.rpyc_impl import BenchmarkService
 
 def run_server(port):
@@ -14,6 +15,7 @@ def run_server(port):
     thread.start()
     time.sleep(0.5)
     print("READY", flush=True)
+    sys.stdout.flush()  # Ensure the READY signal is sent immediately
     # Keep the server running indefinitely
     while True:
         time.sleep(3600)

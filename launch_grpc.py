@@ -3,6 +3,7 @@ import argparse
 import asyncio
 import logging
 import os
+import sys
 if not os.path.exists("proto/rpc_pb2.py"):
     import subprocess
     subprocess.run(["python", "build_protos.py"], check=True)
@@ -12,7 +13,8 @@ async def run_server(port):
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
     impl = GRPCImplementation(port=port)
     await impl.setup()
-    logging.info("READY")
+    print("READY", flush=True)
+    sys.stdout.flush()  # Ensure the READY signal is sent immediately
     logging.info("Entering idle loop to keep the gRPC server running")
     await asyncio.Event().wait()
 

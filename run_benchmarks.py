@@ -25,7 +25,7 @@ def main():
     parser.add_argument("--test", type=str, help="Specific test pattern to run")
     parser.add_argument("--output-dir", type=str, default="benchmark_results",
                         help="Directory to store results")
-    parser.add_argument("--timeout", type=int, default=300,
+    parser.add_argument("--timeout", type=int, default=30,
                         help="Timeout in seconds for each implementation's benchmark")
     args = parser.parse_args()
     
@@ -56,7 +56,14 @@ def main():
             continue
             
         result_file = os.path.join(results_dir, f"{impl}_results.json")
-        cmd = ["pytest", "-v", "-x", "--benchmark-enable", "--benchmark-json", result_file]
+        cmd = [
+            "pytest",
+            "-v", "-xvs", # Keep existing verbose flags
+            "--benchmark-enable",
+            "--benchmark-json", result_file,
+            "--log-cli-level=DEBUG", # Enable DEBUG level logging for tests
+            "--tb=short" # Shorten pytest tracebacks on failure
+        ]
         
         if args.isolated:
             cmd.append("--rpc-isolated")
@@ -76,68 +83,50 @@ def main():
         try:
             # Use universal_newlines=True for better text handling
             print(f"Executing: {' '.join(cmd)}")
-            
-            # Set a timeout per implementation
-            timeout = args.timeout  # seconds
-            
-            # Run the process with a timeout using Popen for real-time output
+                
+            # Run with timeout using subprocess.run for better handling
             try:
-                start_time = time.time()
-                process = subprocess.Popen(
+                result = subprocess.run(
                     cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1  # Line buffered
+                    timeout=args.timeout,
+                    capture_output=True,  # Capture stdout/stderr
+                    text=True,            # Decode as text
+                    check=False           # Don't raise exception on non-zero exit, check manually
                 )
-                
-                # Read and print output in real-time
-                while True:
-                    # Check if we've exceeded the timeout
-                    if time.time() - start_time > timeout:
-                        process.kill()
-                        print(f"\nTimeout reached for {impl} after {timeout} seconds.")
-                        print(f"Benchmark for {impl} was terminated due to timeout.")
-                        sys.exit(1)  # Fail early on timeout
-                        
-                    # Read a line with a small timeout to allow checking the overall timeout
-                    try:
-                        line = process.stdout.readline()
-                        if not line and process.poll() is not None:
-                            break
-                        if line:
-                            print(line.rstrip())
-                    except Exception as e:
-                        print(f"Error reading output: {e}")
-                        sys.exit(1)  # Fail early on error
-                        
-                    # Small sleep to prevent CPU spinning
-                    time.sleep(0.01)
-                
-                # Get the return code
-                return_code = process.poll()
-                if return_code is None:
-                    # Process is still running, kill it
-                    process.kill()
-                    process.wait()
-                    print(f"Process for {impl} was killed after timeout")
-                    sys.exit(1)  # Fail early if process was killed
-                elif return_code != 0:
-                    print(f"Error: Benchmark for {impl} exited with code {return_code}")
+
+                # Print captured output
+                if result.stdout:
+                    print("--- Benchmark Output ---")
+                    print(result.stdout)
+                    print("------------------------")
+                if result.stderr:
+                    print("--- Benchmark Errors ---")
+                    print(result.stderr)
+                    print("------------------------")
+
+                if result.returncode != 0:
+                    print(f"Error: Benchmark for {impl} exited with code {result.returncode}")
                     print("Stopping all benchmarks due to failure.")
-                    sys.exit(1)  # Fail early on non-zero return code
-                
-                # Read any remaining output
-                remaining_output, _ = process.communicate()
-                if remaining_output:
-                    print(remaining_output)
-                    
+                    sys.exit(1) # Fail early on non-zero return code
+
+            except subprocess.TimeoutExpired as e:
+                print(f"\nTimeout reached for {impl} after {args.timeout} seconds.")
+                print(f"Benchmark for {impl} was terminated due to timeout.")
+                # Print any captured output before timeout
+                if e.stdout:
+                    print("--- Output before timeout ---")
+                    print(e.stdout)
+                    print("-----------------------------")
+                if e.stderr:
+                    print("--- Errors before timeout ---")
+                    print(e.stderr)
+                    print("-----------------------------")
+                sys.exit(1) # Fail early on timeout
+
             except Exception as e:
                 print(f"\nError during benchmark execution for {impl}: {e}")
                 print("Stopping all benchmarks due to failure.")
-                if 'process' in locals() and process.poll() is None:
-                    process.kill()
-                sys.exit(1)  # Fail early on exception
+                sys.exit(1) # Fail early on other exceptions
                 
         except Exception as e:
             print(f"Error running benchmark for {impl}: {e}")
