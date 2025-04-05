@@ -44,17 +44,60 @@ def load_benchmark_data(results_dir):
                 continue
                 
             for benchmark in benchmark_data['benchmarks']:
-                test_name = benchmark['name'].split('[')[0]
+                test_name = benchmark['name'].split('[')[0] # Get base test name
+
+                # Get operations count from extra_info, default to 1 if not present
+                operations_per_run = benchmark.get('extra_info', {}).get('operations', 1)
+                if not isinstance(operations_per_run, int) or operations_per_run <= 0:
+                    print(f"Warning: Invalid 'operations' count ({operations_per_run}) found for test {benchmark['name']} in {filepath}. Defaulting to 1.")
+                    operations_per_run = 1
+
+                # Adjust metrics based on the number of operations per run
+                original_mean = benchmark['stats']['mean']
+                original_stddev = benchmark['stats']['stddev']
+
+                if operations_per_run == 1:
+                    # No adjustment needed if only one operation per run
+                    mean_time = original_mean
+                    min_time = benchmark['stats']['min']
+                    max_time = benchmark['stats']['max']
+                    median_time = benchmark['stats']['median']
+                    stddev_time = original_stddev
+                    ops_per_sec = 1.0 / original_mean if original_mean > 0 else float('inf')
+                elif original_mean > 0:
+                    # Calculate adjusted time per operation
+                    mean_time = original_mean / operations_per_run
+                    min_time = benchmark['stats']['min'] / operations_per_run
+                    max_time = benchmark['stats']['max'] / operations_per_run
+                    median_time = benchmark['stats']['median'] / operations_per_run
+                    # Stddev scaling is approx sqrt(N) for sum, so /N for mean? Let's scale directly for simplicity.
+                    # This assumes variations scale linearly with the number of ops, which might not be accurate.
+                    # Consider reporting original stddev or stddev relative to mean time if this is problematic.
+                    stddev_time = original_stddev / operations_per_run
+                    # Ops per second = total operations / total time for the batch
+                    ops_per_sec = operations_per_run / original_mean
+                else:
+                    # Handle zero mean time case (should be rare)
+                    print(f"Warning: Mean time is zero for test {benchmark['name']} in {filepath}. Cannot calculate adjusted metrics accurately.")
+                    mean_time = 0
+                    min_time = 0
+                    max_time = 0
+                    median_time = 0
+                    stddev_time = 0
+                    ops_per_sec = float('inf') # Or handle as appropriate
+
                 stats = {
                     'implementation': impl_name,
                     'test': test_name,
-                    'mean': benchmark['stats']['mean'],
-                    'min': benchmark['stats']['min'],
-                    'max': benchmark['stats']['max'],
-                    'median': benchmark['stats']['median'],
-                    'stddev': benchmark['stats']['stddev'],
-                    'ops': 1.0 / benchmark['stats']['mean'],  # operations per second
+                    'mean': mean_time,          # Adjusted mean time per operation
+                    'min': min_time,            # Adjusted min time per operation
+                    'max': max_time,            # Adjusted max time per operation
+                    'median': median_time,      # Adjusted median time per operation
+                    'stddev': stddev_time,      # Adjusted stddev per operation
+                    'ops': ops_per_sec,         # Adjusted operations per second
                     'rounds': benchmark['stats']['rounds'],
+                    'operations_per_run': operations_per_run, # Store for reference
+                    'original_mean': original_mean,         # Store original mean for debugging
                 }
                 data.append(stats)
         except Exception as e:

@@ -7,7 +7,7 @@ import pytest
 def test_benchmark_simple_call(rpc_implementation, benchmark, concurrency):
     """Benchmark simple RPC calls with varying concurrency levels"""
 
-    total_calls = 200
+    total_calls = 200 # Define the number of operations
 
     def run_test():
         async def concurrent_test():
@@ -24,6 +24,8 @@ def test_benchmark_simple_call(rpc_implementation, benchmark, concurrency):
             asyncio.wait_for(concurrent_test(), timeout=60)
         )
 
+    # Add extra info BEFORE running the benchmark
+    benchmark.extra_info['operations'] = total_calls
     # Run the benchmark
     results = benchmark(run_test)
 

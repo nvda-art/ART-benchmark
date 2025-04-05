@@ -10,6 +10,7 @@ def test_benchmark_large_payload(rpc_implementation, benchmark):
         async def concurrent_payload_test():
             # Define payload sizes to test
             sizes = [1024, 10*1024, 100*1024, 1024*1024]
+            num_operations = len(sizes) # Define the number of operations
 
             # Run concurrent calls with different payload sizes
             tasks = [rpc_implementation.simple_call(
@@ -22,6 +23,9 @@ def test_benchmark_large_payload(rpc_implementation, benchmark):
             asyncio.wait_for(concurrent_payload_test(), timeout=180)
         )
 
+    # Add extra info BEFORE running the benchmark
+    # Note: The number of operations here is the number of different sizes tested in one batch
+    benchmark.extra_info['operations'] = len([1024, 10*1024, 100*1024, 1024*1024])
     results = benchmark(run_test)
 
     # Check for exceptions in results
