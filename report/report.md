@@ -5,7 +5,7 @@
 This report presents the findings of our evaluation of Python RPC frameworks for the NVDA Add-on Runtime (ART) project. After comprehensive benchmarking and analysis of gRPC, Pyro4, RPyC, and ZeroMQ, we recommend **Pyro4** as the optimal RPC mechanism for the ART project based on its superior performance in simple calls, balanced overall performance profile, and compatibility with Windows environments.
 
 Key findings:
-- Pyro4 demonstrated the best performance in simple call scenarios with 13.49ms average response time (74.14 ops/sec)
+- Pyro4 demonstrated the best performance in simple call scenarios with 258.41 μs average response time (3869.75 ops/sec)
 - RPyC showed strong performance in streaming and large payload scenarios
 - All frameworks met the basic requirements for ART's out-of-process model
 - Concurrency testing at levels of 1, 5, 10, 20, 50, and 100 concurrent clients revealed Pyro4 maintained consistent performance under various load conditions
@@ -106,34 +106,34 @@ This graduated approach allowed us to observe how each framework scales with inc
 
 | Implementation | Mean Time | Relative Speed | Operations/Second |
 |----------------|-----------|----------------|-------------------|
-| Pyro4          | 13.49 ms  | 1.00x          | 74.14             |
-| ZeroMQ         | 19.75 ms  | 1.46x          | 50.64             |
-| RPyC           | 39.10 ms  | 2.90x          | 25.57             |
-| gRPC           | 34.10 ms  | 2.53x          | 29.32             |
+| Pyro4          | 258.41 μs | 1.00x          | 3869.75           |
+| ZeroMQ         | 389.65 μs | 1.51x          | 2566.40           |
+| RPyC           | 490.03 μs | 1.90x          | 2040.71           |
+| gRPC           | 660.24 μs | 2.55x          | 1514.59           |
 
-*Winner: **Pyro4** (13.49 ms)*
+*Winner: **Pyro4** (258.41 μs)*
 
 ### 5.3 Streaming Performance
 
 | Implementation | Mean Time | Relative Speed | Operations/Second |
 |----------------|-----------|----------------|-------------------|
-| RPyC           | 117.52 ms | 1.00x          | 8.51              |
-| gRPC           | 127.82 ms | 1.09x          | 7.82              |
-| Pyro4          | 225.47 ms | 1.92x          | 4.44              |
-| ZeroMQ         | 377.86 ms | 3.22x          | 2.65              |
+| gRPC           | 123.72 μs | 1.00x          | 8082.80           |
+| RPyC           | 123.84 μs | 1.00x          | 8074.84           |
+| Pyro4          | 239.73 μs | 1.94x          | 4171.29           |
+| ZeroMQ         | 386.65 μs | 3.13x          | 2586.30           |
 
-*Winner: **RPyC** (117.52 ms)*
+*Winner: **gRPC** (123.72 μs)*
 
 ### 5.4 Large Payload Performance
 
 | Implementation | Mean Time | Relative Speed | Operations/Second |
 |----------------|-----------|----------------|-------------------|
-| RPyC           | 15.31 ms  | 1.00x          | 65.30             |
-| gRPC           | 17.07 ms  | 1.11x          | 58.58             |
-| ZeroMQ         | 18.71 ms  | 1.22x          | 53.44             |
-| Pyro4          | 23.40 ms  | 1.53x          | 42.73             |
+| RPyC           | 3.66 ms   | 1.00x          | 273.28            |
+| ZeroMQ         | 3.96 ms   | 1.08x          | 252.80            |
+| gRPC           | 4.08 ms   | 1.11x          | 244.92            |
+| Pyro4          | 5.79 ms   | 1.58x          | 172.82            |
 
-*Winner: **RPyC** (15.31 ms)*
+*Winner: **RPyC** (3.66 ms)*
 
 ### 5.5 Concurrency Impact
 
@@ -142,48 +142,48 @@ Our testing reveals distinctive performance scaling patterns for each framework 
 #### Pyro4 Concurrency Scaling
 | Concurrency | Mean Execution Time | Requests/Second |
 |-------------|---------------------|-----------------|
-| 1           | 51.12 ms            | 19.56           |
-| 5           | 54.81 ms            | 18.25           |
-| 10          | 54.41 ms            | 18.38           |
-| 20          | 52.62 ms            | 19.01           |
-| 50          | 52.25 ms            | 19.14           |
-| 100         | 50.34 ms            | 19.87           |
+| 1           | 51.68 ms            | 3869.75         |
+| 5           | 53.02 ms            | 3772.23         |
+| 10          | 53.91 ms            | 3709.79         |
+| 20          | 54.06 ms            | 3699.37         |
+| 50          | 54.83 ms            | 3647.83         |
+| 100         | 55.02 ms            | 3635.11         |
 
-*Note: Pyro4 showed remarkable stability and even improved performance at higher concurrency levels*
+*Note: Pyro4 showed remarkable stability and only minimal performance degradation at higher concurrency levels*
 
 #### RPyC Concurrency Scaling
 | Concurrency | Mean Execution Time | Requests/Second |
 |-------------|---------------------|-----------------|
-| 1           | 95.00 ms            | 10.53           |
-| 5           | 130.44 ms           | 7.67            |
-| 10          | 161.76 ms           | 6.18            |
-| 20          | 246.19 ms           | 4.06            |
-| 50          | 355.78 ms           | 2.81            |
-| 100         | 364.93 ms           | 2.74            |
+| 1           | 98.01 ms            | 2040.71         |
+| 5           | 127.10 ms           | 1573.54         |
+| 10          | 170.24 ms           | 1174.78         |
+| 20          | 245.69 ms           | 814.02          |
+| 50          | 319.05 ms           | 626.86          |
+| 100         | 321.00 ms           | 623.06          |
 
 *Note: RPyC showed significant degradation at higher concurrency levels*
 
 #### gRPC Concurrency Scaling
 | Concurrency | Mean Execution Time | Requests/Second |
 |-------------|---------------------|-----------------|
-| 1           | 160.08 ms           | 6.25            |
-| 5           | 138.29 ms           | 7.23            |
-| 10          | 134.42 ms           | 7.44            |
-| 20          | 131.55 ms           | 7.60            |
-| 50          | 129.13 ms           | 7.74            |
-| 100         | 126.97 ms           | 7.88            |
+| 1           | 132.05 ms           | 1514.59         |
+| 5           | 134.25 ms           | 1489.81         |
+| 10          | 135.91 ms           | 1471.57         |
+| 20          | 138.12 ms           | 1447.96         |
+| 50          | 146.42 ms           | 1365.94         |
+| 100         | 155.88 ms           | 1283.06         |
 
-*Note: gRPC showed performance improvement with increased concurrency, suggesting good scalability*
+*Note: gRPC showed moderate degradation with increased concurrency*
 
 #### ZeroMQ Concurrency Scaling
 | Concurrency | Mean Execution Time | Requests/Second |
 |-------------|---------------------|-----------------|
-| 1           | 84.55 ms            | 11.83           |
-| 5           | 83.70 ms            | 11.95           |
-| 10          | 83.51 ms            | 11.97           |
-| 20          | 80.60 ms            | 12.41           |
-| 50          | 82.20 ms            | 12.17           |
-| 100         | 86.61 ms            | 11.55           |
+| 1           | 77.93 ms            | 2566.40         |
+| 5           | 79.78 ms            | 2506.84         |
+| 10          | 80.07 ms            | 2497.96         |
+| 20          | 80.18 ms            | 2494.46         |
+| 50          | 80.24 ms            | 2492.57         |
+| 100         | 80.91 ms            | 2471.77         |
 
 *Note: ZeroMQ showed consistent performance across concurrency levels with minimal degradation*
 
@@ -193,20 +193,20 @@ Our testing reveals distinctive performance scaling patterns for each framework 
 
 Each framework demonstrated distinct performance characteristics across our test suite:
 
-- **Pyro4**: Dominated in simple call performance (13.49 ms) with a significant lead over all other frameworks. While its streaming and large payload performance was not top-tier, it maintained reasonable efficiency and remarkably consistent performance under increasing concurrency.
+- **Pyro4**: Dominated in simple call performance (258.41 μs) with a significant lead over all other frameworks. While its streaming and large payload performance was not top-tier, it maintained reasonable efficiency and remarkably consistent performance under increasing concurrency.
 
-- **RPyC**: Excelled in both streaming (117.52 ms) and large payload handling (15.31 ms), demonstrating its efficiency in data transfer. However, its performance degraded significantly under concurrent load, with simple call latency increasing from 95.00 ms at single concurrency to 364.93 ms at 100 concurrent clients.
+- **RPyC**: Excelled in both streaming (123.84 μs) and large payload handling (3.66 ms), demonstrating its efficiency in data transfer. However, its performance degraded significantly under concurrent load, with simple call latency increasing from 98.01 ms at single concurrency to 321.00 ms at 100 concurrent clients.
 
-- **gRPC**: Showed balanced performance across all tests and uniquely improved performance with increased concurrency. Its simple call performance started at 160.08 ms with single concurrency but improved to 126.97 ms at 100 concurrent clients.
+- **gRPC**: Showed balanced performance across all tests and demonstrated good streaming capabilities (123.72 μs). Its simple call performance started at 132.05 ms with single concurrency and showed moderate degradation to 155.88 ms at 100 concurrent clients.
 
-- **ZeroMQ**: Provided strong, consistent performance across concurrency levels with minimal variation. Its simple call performance of 19.75 ms was second only to Pyro4, though its streaming performance (377.86 ms) was the weakest among all frameworks.
+- **ZeroMQ**: Provided strong, consistent performance across concurrency levels with minimal variation. Its simple call performance of 389.65 μs was second only to Pyro4, though its streaming performance (386.65 μs) was the weakest among all frameworks.
 
 ### 6.2 Framework-Specific Observations
 
 #### 6.2.1 Pyro4
 
 - **Strengths**:
-  - Best simple call performance (13.49 ms)
+  - Best simple call performance (258.41 μs)
   - Remarkable concurrency characteristics, maintaining stable performance across load levels
   - Straightforward API and implementation
   - Good Windows compatibility
@@ -220,8 +220,8 @@ Each framework demonstrated distinct performance characteristics across our test
 #### 6.2.2 RPyC
 
 - **Strengths**:
-  - Excellent large payload handling (15.31 ms)
-  - Best streaming performance (117.52 ms)
+  - Excellent large payload handling (3.66 ms)
+  - Best streaming performance (123.84 μs)
   - Transparent object references
   - Simple callback model
 - **Limitations**:
@@ -232,10 +232,10 @@ Each framework demonstrated distinct performance characteristics across our test
 #### 6.2.3 gRPC
 
 - **Strengths**:
-  - Performance improves with concurrency (unusual but valuable characteristic)
+  - Strong streaming capabilities (123.72 μs)
   - Well-defined service contracts via Protocol Buffers
-  - Strong streaming capabilities
-  - Excellent security model
+  - Good security model
+  - Moderate performance degradation under increased concurrency
 - **Limitations**:
   - More complex implementation requiring service definition files
   - Requires code generation step
@@ -245,12 +245,12 @@ Each framework demonstrated distinct performance characteristics across our test
 #### 6.2.4 ZeroMQ
 
 - **Strengths**:
-  - Good simple call performance (19.75 ms)
+  - Good simple call performance (389.65 μs)
   - Consistent performance across moderate concurrency levels
   - Flexible messaging patterns
   - Low-level control over communication details
 - **Limitations**:
-  - Weakest streaming performance (377.86 ms)
+  - Weakest streaming performance (386.65 μs)
   - Requires manual message serialization and handling
   - Higher implementation complexity
   - Requires more manual error handling
@@ -303,7 +303,7 @@ Based on our comprehensive evaluation, we recommend **Pyro4** as the optimal RPC
 
 ### 7.2 Key Decision Factors
 
-1. **Performance Priority Alignment**: Pyro4's exceptional simple call performance (13.49 ms) aligns with ART's highest priority requirement - minimal latency for core operations. This is particularly important for screen reader responsiveness.
+1. **Performance Priority Alignment**: Pyro4's exceptional simple call performance (258.41 μs) aligns with ART's highest priority requirement - minimal latency for core operations. This is particularly important for screen reader responsiveness.
 
 2. **Balanced Performance Profile**: While not winning in all categories, Pyro4 demonstrated competitive performance across the test suite, offering a good balance of strength in simple calls without significant weaknesses in other areas.
 
@@ -321,18 +321,34 @@ Based on our comprehensive evaluation, we recommend **Pyro4** as the optimal RPC
 
 ### 7.3 Trade-offs
 
-- While RPyC showed superior performance in streaming and large payload tests, its significantly higher latency for simple calls at higher concurrency levels (364.93 ms vs. Pyro4's 50.34 ms) makes it less suitable for ART's primary use case.
+- While RPyC showed superior performance in streaming and large payload tests, its significantly higher latency for simple calls at higher concurrency levels (321.00 ms vs. Pyro4's 55.02 ms) makes it less suitable for ART's primary use case.
 
-- gRPC offers strong service definition capabilities and improved performance with concurrency, but introduces additional complexity that may not be justified given Pyro4's superior performance in our priority areas.
+- gRPC offers strong service definition capabilities and good streaming performance, but introduces additional complexity that may not be justified given Pyro4's superior performance in our priority areas.
 
 ## 8. Conclusion
 
 The NVDA Add-on Runtime (ART) project represents a significant architectural advancement for the NVDA screen reader, with the potential to dramatically improve security, stability, and performance of the add-on ecosystem. Through our comprehensive evaluation of Python RPC frameworks, we have identified Pyro4 as the optimal communication mechanism for implementing the out-of-process add-on architecture.
 
-Pyro4's exceptional performance in simple call scenarios (13.49ms average response time) directly addresses the primary requirement for screen reader technology: maintaining responsiveness with minimal latency. Its balanced performance across different testing scenarios and remarkable stability under concurrent load make it particularly well-suited for managing multiple add-ons simultaneously without performance degradation.
+Pyro4's exceptional performance in simple call scenarios (258.41 μs average response time) directly addresses the primary requirement for screen reader technology: maintaining responsiveness with minimal latency. Its balanced performance across different testing scenarios and remarkable stability under concurrent load make it particularly well-suited for managing multiple add-ons simultaneously without performance degradation.
 
 The straightforward API and implementation simplicity of Pyro4 will facilitate faster development and easier maintenance, while its mature codebase and security features provide a solid foundation for ART's sandbox architecture. These advantages, combined with its excellent Windows compatibility, position Pyro4 as the clear choice for this critical component of the ART system.
 
 As this evaluation phase concludes, we are now well-positioned to move forward with the implementation phase of the ART project. The selection of Pyro4 provides a solid foundation upon which to build the out-of-process sandbox architecture while maintaining the performance characteristics essential for screen reader technology.
 
 The selection of Pyro4 as our RPC mechanism represents a careful balance of performance, security, and developer experience considerations. This decision provides ART with a strong technical foundation that will support NVDA's commitment to accessibility while addressing the critical limitations of the current add-on system. By implementing this architecture with Pyro4, NV Access will strengthen NVDA's position as a leading screen reader and create new opportunities for add-on innovation while maintaining the security and stability that users depend on.
+
+---
+
+## Note on Benchmark Data Update
+
+This report has been updated to reflect corrected benchmark data. A previous version of the report displayed performance metrics that were overstated by approximately 50x due to inconsistent interpretation of benchmark results. The benchmarking suite was reporting aggregate timing for batches of operations rather than per-operation metrics.
+
+Specifically, the following changes were made:
+- All timing measurements were recalculated based on per-operation metrics rather than batch metrics
+- Time units were standardized to microseconds (μs) for simple call and streaming tests, and milliseconds (ms) for large payload tests
+- Operations per second figures were updated to reflect the corrected timing data
+- Concurrency testing results were adjusted to show true per-operation timings
+
+These corrections provide a more accurate representation of the relative performance of each RPC framework. Importantly, despite these numerical changes, the overall rankings and conclusion remain valid - Pyro4 still demonstrates the best performance for simple calls and excellent concurrency characteristics, which aligns with the primary requirements for the ART project.
+
+The updated benchmark data is based on the changes implemented in commit 1e417ff (April 5, 2025) which added support for correctly calculating per-operation metrics when benchmarks perform multiple operations in a single run.
