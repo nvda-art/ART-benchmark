@@ -14,11 +14,11 @@ logging.basicConfig(level=logging.INFO,
 
 
 def pytest_addoption(parser):
-    parser.addoption("--rpc", action="store", default="rpyc", 
-                     choices=["rpyc", "zmq", "grpc", "named-pipe", "pyro"],
+    parser.addoption("--rpc", action="store", default="rpyc",
+                     choices=["pure-python", "rpyc", "zmq", "grpc", "named-pipe", "pyro"],
                      help="Choose the RPC implementation to benchmark.")
     parser.addoption("--rpc-isolated", action="store_true", default=False,
-                     help="Run the RPC server in an isolated process.")
+                     help="Run the RPC server in an isolated process (ignored for pure-python).")
 
 
 async def launch_and_wait(cmd, protocol, timeout=30):
@@ -83,14 +83,22 @@ import pytest_asyncio
 @pytest_asyncio.fixture
 async def rpc_implementation(request):
     rpc_type = request.config.getoption("--rpc")
-    isolated = request.config.getoption("--rpc-isolated")
-    
+    # Pure Python implementation cannot run isolated
+    isolated = request.config.getoption("--rpc-isolated") and rpc_type != "pure-python"
+
     proc = None  # Initialize proc to None
     logging.info(f"Setting up {rpc_type} implementation (isolated={isolated})")
 
-    if isolated:
+    if rpc_type == "pure-python":
+        from implementations.pure_python_impl import PurePythonImplementation
+        impl = PurePythonImplementation()
+        # No setup/teardown needed, but call them for consistency with the interface
+        await impl.setup()
+        yield impl
+        await impl.teardown()
+    elif isolated:
         # Dynamic port assignment
-        port = get_dynamic_port()
+        port = get_dynamic_port() # Moved inside elif isolated
         if rpc_type == "rpyc":
             cmd = [sys.executable, "-u", "launch_rpyc.py", "--port", str(port)]
             proc = await launch_and_wait(cmd, "RPyC")
@@ -164,7 +172,7 @@ async def rpc_implementation(request):
                 await asyncio.wait_for(proc.wait(), timeout=5.0)
             except asyncio.TimeoutError:
                 proc.kill()
-    else:
+    elif not isolated: # Handle non-isolated cases (excluding pure-python handled above)
         if rpc_type == "rpyc":
             from implementations.rpyc_impl import RPyCImplementation
             impl = RPyCImplementation()

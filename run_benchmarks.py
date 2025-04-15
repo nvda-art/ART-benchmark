@@ -16,12 +16,12 @@ def main():
                         stream=sys.stdout)
     logging.info("Starting benchmark run")
     parser = argparse.ArgumentParser(description="Run RPC benchmarks and collect results")
-    parser.add_argument("--implementations", nargs="+", 
-                        choices=["rpyc", "zmq", "grpc", "named-pipe", "pyro"],
-                        default=["rpyc", "zmq", "grpc", "pyro"],
+    parser.add_argument("--implementations", nargs="+",
+                        choices=["pure-python", "rpyc", "zmq", "grpc", "named-pipe", "pyro"],
+                        default=["pure-python", "rpyc", "zmq", "grpc", "pyro"],
                         help="RPC implementations to benchmark")
-    parser.add_argument("--isolated", action="store_true", 
-                        help="Run servers in isolated processes")
+    parser.add_argument("--isolated", action="store_true",
+                        help="Run servers in isolated processes (ignored for pure-python)")
     parser.add_argument("--test", type=str, help="Specific test pattern to run")
     parser.add_argument("--output-dir", type=str, default="benchmark_results",
                         help="Directory to store results")
@@ -54,7 +54,10 @@ def main():
         if impl == "named-pipe" and not sys.platform.startswith("win"):
             print("Skipping named-pipe benchmarks on non-Windows platform")
             continue
-        
+
+        # Skip isolated mode check for pure-python
+        is_isolated = args.isolated and impl != "pure-python"
+
         # Check if Pyro name server is running when using Pyro
         if impl == "pyro":
             try:
@@ -88,10 +91,10 @@ def main():
             "--log-cli-level=INFO",
             "--tb=short" # Shorten pytest tracebacks on failure
         ]
-        
-        if args.isolated:
+
+        if is_isolated:
             cmd.append("--rpc-isolated")
-        
+
         cmd.extend([f"--rpc={impl}"])
         
         if args.test:
