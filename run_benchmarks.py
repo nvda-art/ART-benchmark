@@ -102,10 +102,10 @@ def main():
         
         # Always add timeout but make sure it's properly formatted for pytest-timeout
         cmd.extend([f"--timeout={args.timeout}"])
-        
-        print(f"\n=== Running benchmarks for {impl} (isolated={args.isolated}) ===")
+
+        print(f"\n=== Running benchmarks for {impl} (isolated={is_isolated}) ===")
         print(f"Command: {' '.join(cmd)}")
-        
+
         # Run with timeout to prevent hanging
         try:
             # Use universal_newlines=True for better text handling
