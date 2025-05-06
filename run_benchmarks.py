@@ -17,8 +17,8 @@ def main():
     logging.info("Starting benchmark run")
     parser = argparse.ArgumentParser(description="Run RPC benchmarks and collect results")
     parser.add_argument("--implementations", nargs="+",
-                        choices=["pure-python", "rpyc", "zmq", "grpc", "named-pipe", "pyro"],
-                        default=["pure-python", "rpyc", "zmq", "grpc", "pyro"],
+                        choices=["pure-python", "rpyc", "zmq", "grpc", "named-pipe", "pyro", "pyro5"],
+                        default=["pure-python", "rpyc", "zmq", "grpc", "pyro", "pyro5"],
                         help="RPC implementations to benchmark")
     parser.add_argument("--isolated", action="store_true",
                         help="Run servers in isolated processes (ignored for pure-python)")
@@ -58,30 +58,27 @@ def main():
         # Skip isolated mode check for pure-python
         is_isolated = args.isolated and impl != "pure-python"
 
-        # Check if Pyro name server is running when using Pyro
-        if impl == "pyro":
+        # Check if Pyro4/Pyro5 name server is running when needed
+        if impl == "pyro" or (impl == "pyro5" and is_isolated): # Only check NS for isolated Pyro5
+            ns_running = False
+            ns_version = 4 if impl == "pyro" else 5
             try:
-                import Pyro4
-                Pyro4.locateNS()
-                print("Pyro name server is running")
+                if ns_version == 4:
+                    import Pyro4
+                    Pyro4.locateNS(timeout=2) # Short timeout for check
+                else: # ns_version == 5
+                    import Pyro5.api
+                    Pyro5.api.locate_ns(timeout=2) # Short timeout for check
+                logging.info(f"Pyro{ns_version} name server is running.")
+                ns_running = True
             except Exception as e:
-                print(f"WARNING: Pyro name server is not running: {e}")
-                print("Starting Pyro name server...")
-                try:
-                    # Start name server in background
-                    ns_process = subprocess.Popen(
-                        [sys.executable, "-m", "Pyro4.naming"],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
-                    )
-                    # Wait a moment for it to start
-                    time.sleep(2)
-                    print("Pyro name server started")
-                except Exception as ns_error:
-                    print(f"ERROR: Failed to start Pyro name server: {ns_error}")
-                    print("Skipping Pyro benchmarks")
-                    continue
-            
+                logging.error(f"Pyro{ns_version} name server check failed: {e}")
+                # For benchmarks, require the NS to be running externally.
+                print(f"ERROR: Pyro{ns_version} name server is required but not found or not responding.")
+                print(f"Please start the Pyro{ns_version} name server manually (e.g., 'pyro{ns_version}-ns') and try again.")
+                print(f"Skipping {impl} benchmarks.")
+                continue # Skip this implementation
+
         result_file = os.path.join(results_dir, f"{impl}_results.json")
         cmd = [
             "pytest",

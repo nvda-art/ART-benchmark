@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO,
 
 def pytest_addoption(parser):
     parser.addoption("--rpc", action="store", default="rpyc",
-                     choices=["pure-python", "rpyc", "zmq", "grpc", "named-pipe", "pyro"],
+                     choices=["pure-python", "rpyc", "zmq", "grpc", "named-pipe", "pyro", "pyro5"],
                      help="Choose the RPC implementation to benchmark.")
     parser.addoption("--rpc-isolated", action="store_true", default=False,
                      help="Run the RPC server in an isolated process (ignored for pure-python).")
@@ -147,6 +147,22 @@ async def rpc_implementation(request):
             except asyncio.TimeoutError:
                 logging.warning("Pyro server did not terminate gracefully, killing it")
                 proc.kill()
+        elif rpc_type == "pyro5":
+            # Assumes Pyro5 Name Server is running and accessible
+            object_name = f"example.benchmark.pyro5.{uuid.uuid4().hex}"
+            cmd = [sys.executable, "-u", "launch_pyro5.py", "--name", object_name]
+            proc = await launch_and_wait(cmd, "Pyro5")
+            from implementations.pyro5_impl import Pyro5Implementation
+            impl = Pyro5Implementation(external_server=True, object_name=object_name)
+            await impl.setup()  # Connects proxy via NS
+            yield impl
+            # Terminate the process - our improved launcher will clean up the name server registration
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                logging.warning("Pyro5 server did not terminate gracefully, killing it")
+                proc.kill()
         elif rpc_type == "grpc":
             cmd = [sys.executable, "-u", "launch_grpc.py", "--port", str(port)]
             proc = await launch_and_wait(cmd, "gRPC")
@@ -189,7 +205,10 @@ async def rpc_implementation(request):
             impl = GRPCImplementation()
         elif rpc_type == "pyro":
             from implementations.pyro_impl import PyroImplementation
-            impl = PyroImplementation()  # Starts internal daemon
+            impl = PyroImplementation()  # Starts internal Pyro4 daemon
+        elif rpc_type == "pyro5":
+            from implementations.pyro5_impl import Pyro5Implementation
+            impl = Pyro5Implementation() # Starts internal Pyro5 daemon
         try:
             logging.info(f"Setting up {rpc_type} implementation in-process")
             await asyncio.wait_for(impl.setup(), timeout=15)
